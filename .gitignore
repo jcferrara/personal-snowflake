@@ -19,6 +19,7 @@ __pycache__/
 *.key
 .env
 .env.*
+!.env.example
 profiles.yml
 
 # Admin stuff
