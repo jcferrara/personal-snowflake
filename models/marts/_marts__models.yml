@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: dim_dates
+    description: >
+      Date dimension. One row per calendar day, built on top of
+      int_dates_spine with additional business-friendly flags for
+      common filtering/reporting needs.
+    columns:
+      - name: date_day
+        description: Calendar date. Grain of this model.
+        data_tests:
+          - unique
+          - not_null
+      - name: is_weekend
+        description: True if the date falls on a Saturday or Sunday.
+      - name: is_current_date
+        description: True if the date matches today's date at query time.
+      - name: is_first_day_of_month
+        description: True if the date is the first day of its calendar month.
+      - name: is_last_day_of_month
+        description: True if the date is the last day of its calendar month.
