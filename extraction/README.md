@@ -80,13 +80,32 @@ them off disk like a local run does:
    start failing on login and this needs to be re-run after a fresh local
    login.
 
-2. **Snowflake private key**:
+2. **Garmin proxy** — GitHub-hosted runners live on Azure/cloud IP ranges,
+   which Garmin's Cloudflare front blocks with a 429 on the OAuth token
+   exchange even when the cached session above is valid. Routing that one
+   call through a residential/ISP proxy fixes it:
+   1. Buy a single static residential (ISP) proxy IP — [IPRoyal's static
+      residential proxies](https://iproyal.com/static-residential-proxies/)
+      are the cheapest fit for this (~$2.70/mo for exactly one IP, no
+      forced bundle). Pick a location near you so the login doesn't look
+      geographically inconsistent to Garmin's own fraud checks.
+   2. Set the connection string it gives you (`http://user:pass@host:port`)
+      as a secret:
+      ```
+      gh secret set GARMIN_PROXY_URL
+      ```
+   `garmin_client.py` only routes the Garmin login/API calls through it —
+   Snowflake isn't IP-blocked, so that connection stays direct. Leaving
+   `GARMIN_PROXY_URL` unset (the default for local runs) talks to Garmin
+   directly, same as before.
+
+3. **Snowflake private key**:
    ```
    base64 < /path/to/your/rsa_key.p8 | gh secret set SNOWFLAKE_PRIVATE_KEY_B64
    ```
    Add `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` too if your key is encrypted.
 
-3. **Everything else**, one secret per env var from `.env.example`:
+4. **Everything else**, one secret per env var from `.env.example`:
    ```
    gh secret set GARMIN_EMAIL
    gh secret set GARMIN_PASSWORD
