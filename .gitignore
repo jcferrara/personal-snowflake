@@ -12,6 +12,10 @@ __pycache__/
 # IDE
 .idea/
 .vscode/
+.DS_Store
+
+# Claude Code runtime state
+.claude/scheduled_tasks.lock
 
 # secrets / keys
 *.p8
