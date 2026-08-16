@@ -1,0 +1,61 @@
+version: 2
+
+sources:
+  - name: garmin
+    database: RAW
+    schema: GARMIN
+    description: >
+      Garmin Connect wellness and activity data, landed as semi-structured
+      JSON by extraction/garmin/. Every table shares the same four-column
+      shape: NATURAL_KEY, RAW_DATA (VARIANT), EXTRACTED_AT, SOURCE_METHOD.
+      Daily/range collectors key NATURAL_KEY by calendar date; activities
+      key it by activityId. See extraction/garmin/collectors.py and
+      extraction/garmin/snowflake_writer.py.
+    tables:
+      - name: activities
+        description: >
+          One row per Garmin activity (workout), keyed by activityId.
+          Landed by extraction/garmin/activities.py via the get_activities
+          method, paginated newest-first.
+      - name: activity_details
+        description: >
+          One row per Garmin activity, keyed by activityId, holding the
+          full per-sample time series (heart rate, cadence, speed, GPS,
+          body battery, ...) recorded throughout the activity. The set of
+          metrics captured, and their position in each sample, varies by
+          activity type — see metricDescriptors within raw_data. Landed
+          by extraction/garmin/activity_details.py via get_activity_details,
+          one call per activity already present in RAW.GARMIN.ACTIVITIES.
+      - name: body_battery
+        description: >
+          One row per day of Garmin Body Battery summary data, keyed by
+          calendar date. Landed via the get_body_battery range collector.
+      - name: body_battery_events
+        description: >
+          One row per day, keyed by calendar date, holding an array of
+          Body Battery events (sleep, activities, naps) that occurred
+          that day. Landed via the get_body_battery_events daily
+          collector.
+      - name: hrv
+        description: >
+          One row per day of Heart Rate Variability (HRV) summary and
+          overnight readings, keyed by calendar date. Landed via the
+          get_hrv_data daily collector.
+      - name: resting_heart_rate
+        description: >
+          One row per day of resting heart rate, keyed by calendar date.
+          Landed via the get_rhr_day daily collector.
+      - name: sleep
+        description: >
+          One row per day of sleep summary data, keyed by calendar date.
+          Landed via the get_sleep_data daily collector.
+      - name: steps
+        description: >
+          One row per day of step count data, keyed by calendar date.
+          Landed via the get_daily_steps range collector.
+      - name: training_readiness
+        description: >
+          One row per day, keyed by calendar date, holding an array of
+          training readiness snapshots recalculated at different points
+          during the day. Landed via the get_training_readiness daily
+          collector.

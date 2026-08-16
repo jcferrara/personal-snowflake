@@ -23,6 +23,8 @@ vars:
 
 models:
   personal_snowflake:
+    staging:
+      +materialized: view
     intermediate:
       +materialized: view
     marts:
