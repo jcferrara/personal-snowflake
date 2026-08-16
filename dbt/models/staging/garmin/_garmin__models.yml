@@ -1,0 +1,381 @@
+version: 2
+
+models:
+  - name: stg_garmin__activities
+    description: >
+      One row per Garmin activity (workout). Grain: activity_id.
+    columns:
+      - name: activity_id
+        description: Primary key. Garmin's activityId for the workout.
+        data_tests:
+          - unique
+          - not_null
+      - name: device_id
+        description: Garmin device that recorded the activity.
+      - name: activity_name
+        description: User- or auto-generated title of the activity.
+      - name: activity_type
+        description: >
+          Activity type key (e.g. "rowing_v2", "running"), from
+          activityType.typeKey.
+      - name: event_type
+        description: >
+          Event classification key (e.g. "uncategorized", "race"), from
+          eventType.typeKey.
+      - name: location_name
+        description: Reverse-geocoded location name for the activity.
+      - name: distance_meters
+        description: Total distance covered, in meters.
+      - name: duration_seconds
+        description: Total recorded duration, in seconds.
+      - name: elapsed_duration_seconds
+        description: Wall-clock duration including any paused time.
+      - name: moving_duration_seconds
+        description: Duration excluding time stopped/paused.
+      - name: calories
+        description: Estimated calories burned during the activity.
+      - name: average_heart_rate
+        description: Average heart rate during the activity, in bpm.
+      - name: max_heart_rate
+        description: Maximum heart rate during the activity, in bpm.
+      - name: average_speed_mps
+        description: Average speed, in meters per second.
+      - name: max_speed_mps
+        description: Maximum speed, in meters per second.
+      - name: elevation_gain_meters
+        description: Total elevation gained, in meters.
+      - name: elevation_loss_meters
+        description: Total elevation lost, in meters.
+      - name: is_favorite
+        description: True when the activity is starred as a favorite.
+      - name: activity_date
+        description: >
+          Calendar date the activity started, derived from
+          startTimeLocal.
+      - name: started_at
+        description: Local start timestamp of the activity (startTimeLocal).
+      - name: extracted_at
+        description: When this row was landed into RAW.GARMIN.ACTIVITIES.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_activities).
+
+  - name: stg_garmin__activity_details
+    description: >
+      One row per Garmin activity, holding its per-sample time-series
+      payload (heart rate, cadence, speed, GPS, body battery, ...) as raw
+      arrays. Grain: activity_id. The set of metrics captured, and where
+      each lands in a sample, varies by activity type, so this model
+      doesn't flatten to per-sample rows — see
+      int_garmin__activity_samples_unpivoted for that.
+    columns:
+      - name: activity_id
+        description: >
+          Primary key. Garmin's activityId; matches
+          stg_garmin__activities.activity_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: measurement_count
+        description: >
+          Garmin's own count of distinct measurement types in this
+          activity's detail payload.
+      - name: metrics_count
+        description: Count of samples actually returned in this response page.
+      - name: total_metrics_count
+        description: >
+          Total sample count available for the activity (may exceed
+          metrics_count if the response was paginated/truncated).
+      - name: num_samples
+        description: >
+          Count of samples in activity_detail_metrics (array_size), i.e.
+          how many rows this activity will explode to downstream.
+      - name: has_pending_data
+        description: >
+          True when Garmin hadn't finished processing all of this
+          activity's detail data yet as of extraction.
+      - name: is_details_available
+        description: True when Garmin has detail data available for this activity.
+      - name: metric_descriptors
+        description: >
+          Raw array of {metricsIndex, key, unit} objects describing which
+          metrics this activity recorded and their position within each
+          sample's metrics array. Varies by activity type (e.g. running
+          records 23 metrics like directPower and directStrideLength;
+          strength training only 7). Passed through as VARIANT for an
+          intermediate model to join against activity_detail_metrics.
+      - name: activity_detail_metrics
+        description: >
+          Raw array of per-sample {metrics: [...]} objects; each sample's
+          metrics array is positional and must be read using this same
+          activity's metric_descriptors to know which value is which.
+          Passed through as VARIANT — unflattened here to preserve this
+          model's 1-row-per-activity grain.
+      - name: extracted_at
+        description: When this row was landed into RAW.GARMIN.ACTIVITY_DETAILS.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_activity_details).
+
+  - name: stg_garmin__body_battery
+    description: >
+      One row per day of Garmin Body Battery summary data. Grain:
+      body_battery_date.
+    columns:
+      - name: body_battery_id
+        description: >
+          Primary key. Calendar date (as a string) of the Body Battery
+          summary; equals the source NATURAL_KEY.
+        data_tests:
+          - unique
+          - not_null
+      - name: charged_points
+        description: >
+          Body Battery points gained (0-100 scale) over the course of the
+          day.
+      - name: drained_points
+        description: >
+          Body Battery points drained (0-100 scale) over the course of
+          the day.
+      - name: body_battery_date
+        description: Calendar date this summary covers.
+      - name: started_at
+        description: Local start of the summary window (startTimestampLocal).
+      - name: ended_at
+        description: Local end of the summary window (endTimestampLocal).
+      - name: extracted_at
+        description: When this row was landed into RAW.GARMIN.BODY_BATTERY.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_body_battery).
+
+  - name: stg_garmin__body_battery_events
+    description: >
+      One row per day holding that day's Body Battery events (sleep,
+      recorded activities, auto-detected activities, naps). Grain:
+      body_battery_event_date. The source lands the full day's event
+      array as a single row; per-event detail (event type, impact,
+      duration) is left for an intermediate model to flatten so this
+      model stays 1:1 with the source.
+    columns:
+      - name: body_battery_event_id
+        description: >
+          Primary key. Calendar date (as a string) the events occurred
+          on; equals the source NATURAL_KEY.
+        data_tests:
+          - unique
+          - not_null
+      - name: num_events
+        description: >
+          Count of Body Battery events recorded that day (array_size of
+          the source's raw event array).
+      - name: body_battery_event_date
+        description: Calendar date these events occurred on.
+      - name: extracted_at
+        description: >
+          When this row was landed into RAW.GARMIN.BODY_BATTERY_EVENTS.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_body_battery_events).
+
+  - name: stg_garmin__hrv
+    description: >
+      One row per day of Heart Rate Variability (HRV) summary data.
+      Grain: hrv_date. Per-reading detail (hrvReadings) is left for an
+      intermediate model to flatten so this model stays 1:1 with the
+      source.
+    columns:
+      - name: hrv_id
+        description: >
+          Primary key. Calendar date (as a string) of the HRV summary;
+          equals the source NATURAL_KEY.
+        data_tests:
+          - unique
+          - not_null
+      - name: hrv_status
+        description: >
+          Garmin's qualitative HRV status for the night (e.g.
+          "BALANCED"), from hrvSummary.status.
+      - name: last_night_avg_hrv
+        description: Average overnight HRV reading, in milliseconds.
+      - name: weekly_avg_hrv
+        description: Trailing 7-day average HRV, in milliseconds.
+      - name: last_night_5min_high_hrv
+        description: >
+          Highest 5-minute-average HRV reading from last night, in
+          milliseconds.
+      - name: hrv_date
+        description: Calendar date this HRV summary covers.
+      - name: started_at
+        description: Local start of the HRV measurement window.
+      - name: ended_at
+        description: Local end of the HRV measurement window.
+      - name: extracted_at
+        description: When this row was landed into RAW.GARMIN.HRV.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_hrv_data).
+
+  - name: stg_garmin__resting_heart_rate
+    description: >
+      One row per day of resting heart rate. Grain:
+      resting_heart_rate_date.
+    columns:
+      - name: resting_heart_rate_id
+        description: >
+          Primary key. Calendar date (as a string) of the reading;
+          equals the source NATURAL_KEY.
+        data_tests:
+          - unique
+          - not_null
+      - name: resting_heart_rate
+        description: >
+          Resting heart rate for the day, in bpm. Read from the single
+          element of allMetrics.metricsMap.WELLNESS_RESTING_HEART_RATE
+          (the daily collector queries fromDate = untilDate, so the
+          array always has exactly one reading).
+      - name: resting_heart_rate_date
+        description: Calendar date this reading covers.
+      - name: extracted_at
+        description: >
+          When this row was landed into RAW.GARMIN.RESTING_HEART_RATE.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_rhr_day).
+
+  - name: stg_garmin__sleep
+    description: >
+      One row per day of sleep summary data. Grain: sleep_date.
+      Per-stage timelines (sleepLevels, sleepMovement, remSleepData) are
+      left for an intermediate model to flatten so this model stays 1:1
+      with the source.
+    columns:
+      - name: sleep_id
+        description: >
+          Primary key. Calendar date (as a string) of the sleep summary;
+          equals the source NATURAL_KEY.
+        data_tests:
+          - unique
+          - not_null
+      - name: sleep_time_seconds
+        description: Total time asleep, in seconds.
+      - name: deep_sleep_seconds
+        description: Time spent in deep sleep, in seconds.
+      - name: light_sleep_seconds
+        description: Time spent in light sleep, in seconds.
+      - name: rem_sleep_seconds
+        description: Time spent in REM sleep, in seconds.
+      - name: awake_sleep_seconds
+        description: Time spent awake within the sleep window, in seconds.
+      - name: nap_time_seconds
+        description: Total nap time recorded for the day, in seconds.
+      - name: is_retro
+        description: >
+          True when this sleep record was manually entered/adjusted
+          after the fact (dailySleepDTO.retro), rather than
+          device-detected.
+      - name: is_sleep_window_confirmed
+        description: >
+          True when the user confirmed the detected sleep window in the
+          Garmin Connect app.
+      - name: sleep_date
+        description: Calendar date this sleep summary covers.
+      - name: sleep_started_at
+        description: Local timestamp sleep began.
+      - name: sleep_ended_at
+        description: Local timestamp sleep ended.
+      - name: extracted_at
+        description: When this row was landed into RAW.GARMIN.SLEEP.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_sleep_data).
+
+  - name: stg_garmin__steps
+    description: >
+      One row per day of step count data. Grain: steps_date.
+    columns:
+      - name: steps_id
+        description: >
+          Primary key. Calendar date (as a string) of the step count;
+          equals the source NATURAL_KEY.
+        data_tests:
+          - unique
+          - not_null
+      - name: step_goal
+        description: Daily step goal Garmin set for the user that day.
+      - name: total_distance_meters
+        description: Total distance covered that day, in meters.
+      - name: total_steps
+        description: Total steps recorded for the day.
+      - name: steps_date
+        description: Calendar date this step count covers.
+      - name: extracted_at
+        description: When this row was landed into RAW.GARMIN.STEPS.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_daily_steps).
+
+  - name: stg_garmin__training_readiness
+    description: >
+      One row per day of training readiness. Grain:
+      training_readiness_date. The source can hold multiple readiness
+      snapshots per day (recalculated as new data, like an overnight
+      sleep, comes in); this model surfaces the latest (array index 0)
+      snapshot per day to preserve the source's 1-row-per-day grain.
+    columns:
+      - name: training_readiness_id
+        description: >
+          Primary key. Calendar date (as a string) of the readiness
+          snapshots; equals the source NATURAL_KEY.
+        data_tests:
+          - unique
+          - not_null
+      - name: readiness_level
+        description: >
+          Qualitative readiness level of the latest snapshot (e.g.
+          "HIGH", "LOW").
+      - name: feedback_short
+        description: Short-form feedback phrase for the latest snapshot.
+      - name: feedback_long
+        description: Long-form feedback phrase for the latest snapshot.
+      - name: readiness_score
+        description: Training readiness score (0-100) of the latest snapshot.
+      - name: acute_load
+        description: Acute training load feeding into the latest snapshot.
+      - name: recovery_time_minutes
+        description: >
+          Estimated recovery time remaining, in minutes, as of the
+          latest snapshot.
+      - name: sleep_score
+        description: Sleep score feeding into the latest snapshot.
+      - name: hrv_weekly_average
+        description: >
+          Trailing 7-day average HRV feeding into the latest snapshot,
+          in milliseconds.
+      - name: num_readiness_snapshots
+        description: >
+          Count of readiness snapshots recalculated that day
+          (array_size of the source's raw snapshot array).
+      - name: is_valid_sleep
+        description: >
+          True when the latest snapshot's readiness calculation was
+          based on a valid sleep session.
+      - name: training_readiness_date
+        description: Calendar date these snapshots cover.
+      - name: recorded_at
+        description: Local timestamp the latest snapshot was calculated.
+      - name: extracted_at
+        description: >
+          When this row was landed into RAW.GARMIN.TRAINING_READINESS.
+      - name: source_method
+        description: >
+          garminconnect client method that produced this row
+          (get_training_readiness).

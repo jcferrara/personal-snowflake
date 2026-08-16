@@ -1,0 +1,127 @@
+version: 2
+
+models:
+  - name: int_garmin__activity_samples_unpivoted
+    description: >
+      Every Garmin activity's per-sample time series, unpivoted to one row
+      per (activity_id, sample_index, metric_key). Built by flattening
+      stg_garmin__activity_details' metric_descriptors against its
+      activity_detail_metrics, joined per-activity so it works regardless
+      of which metrics a given activity type recorded. Grain:
+      activity_id x sample_index x metric_key. This is a wide/sparse
+      building-block model, not meant for direct querying — see
+      int_garmin__activities_cardio_samples_pivoted and
+      int_garmin__activities_gps_samples_pivoted for query-friendly,
+      per-activity-type pivots built on top of it.
+    columns:
+      - name: sk
+        description: >
+          Surrogate key (activity_id, sample_index, metric_key). This
+          model's grain doesn't exist as a single source key.
+        data_tests:
+          - unique
+          - not_null
+      - name: activity_id
+        description: >
+          FK to stg_garmin__activities.activity_id /
+          stg_garmin__activity_details.activity_id.
+      - name: sample_index
+        description: >
+          0-based position of this sample within the activity's detail
+          time series (from LATERAL FLATTEN's INDEX on
+          activity_detail_metrics).
+      - name: metric_key
+        description: >
+          Which metric this row's value is for (e.g. "directHeartRate",
+          "directSpeed", "sumDistance"), from the activity's own
+          metricDescriptors.
+      - name: metric_unit
+        description: >
+          Unit key Garmin reports for this metric (e.g. "bpm", "mps",
+          "meter"), from metricDescriptors.unit.key.
+      - name: metric_value
+        description: >
+          The sample's value for this metric. Untyped/uncoverted at this
+          layer (e.g. directTimestamp is still raw epoch milliseconds) —
+          unit-aware conversion happens in the pivoted models downstream.
+
+  - name: int_garmin__activities_cardio_samples_pivoted
+    description: >
+      Heart rate, body battery, and duration/distance, pivoted to one row
+      per activity sample. Built from int_garmin__activity_samples_unpivoted
+      using metric keys observed across every Garmin activity type in this
+      warehouse (cardio, strength, indoor, outdoor alike), so it applies to
+      any activity without type-specific branching — a column is simply
+      NULL where that activity didn't capture the metric. Grain: activity_id
+      x sample_index. This is the table to query for "heart rate by minute"
+      style analysis across any activity type.
+    columns:
+      - name: sk
+        description: Surrogate key (activity_id, sample_index).
+        data_tests:
+          - unique
+          - not_null
+      - name: activity_id
+        description: FK to stg_garmin__activities.activity_id.
+      - name: sample_index
+        description: >
+          0-based position of this sample within the activity's detail
+          time series.
+      - name: elapsed_seconds
+        description: >
+          Wall-clock seconds elapsed since the activity started, as of
+          this sample (sumElapsedDuration).
+      - name: moving_seconds
+        description: >
+          Seconds of active movement since the activity started, as of
+          this sample, excluding paused/stopped time (sumMovingDuration).
+      - name: distance_meters
+        description: Cumulative distance covered as of this sample.
+      - name: heart_rate_bpm
+        description: Heart rate at this sample, in bpm.
+      - name: body_battery
+        description: Body Battery level (0-100) at this sample.
+      - name: recorded_at
+        description: >
+          Timestamp this sample was recorded, converted from Garmin's raw
+          epoch-millisecond directTimestamp.
+
+  - name: int_garmin__activities_gps_samples_pivoted
+    description: >
+      Latitude, longitude, elevation, and speed, pivoted to one row per
+      activity sample, scoped to GPS-tracked activities only (any activity
+      whose metricDescriptors include directLatitude — outdoor cycling,
+      running, hiking, on-water rowing, and similar; indoor/strength
+      activities never appear here). Built from
+      int_garmin__activity_samples_unpivoted. Grain: activity_id x
+      sample_index.
+    columns:
+      - name: sk
+        description: Surrogate key (activity_id, sample_index).
+        data_tests:
+          - unique
+          - not_null
+      - name: activity_id
+        description: FK to stg_garmin__activities.activity_id.
+      - name: sample_index
+        description: >
+          0-based position of this sample within the activity's detail
+          time series.
+      - name: latitude
+        description: GPS latitude at this sample, in decimal degrees.
+      - name: longitude
+        description: GPS longitude at this sample, in decimal degrees.
+      - name: elevation_meters
+        description: >
+          Elevation at this sample, in meters. Not every GPS-tracked
+          activity type reports elevation (e.g. on-water rowing) — NULL
+          when unavailable.
+      - name: speed_mps
+        description: Speed at this sample, in meters per second.
+      - name: vertical_speed_mps
+        description: >
+          Rate of elevation change at this sample, in meters per second.
+      - name: recorded_at
+        description: >
+          Timestamp this sample was recorded, converted from Garmin's raw
+          epoch-millisecond directTimestamp.
