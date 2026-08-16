@@ -37,9 +37,10 @@ models/semantic_views/
 
 ## Before building the first one
 
-- Snowflake role `TRANSFORMER` needs `CREATE SEMANTIC VIEW` on the target schema
-  (`ANALYTICS_DEV.*` / `ANALYTICS.PROD`) — not yet granted in `admin/exact_grants.sql`
-  as of this writing. Add it there (mirroring the existing `CREATE TABLE`/`CREATE VIEW`
-  grants to `TRANSFORMER`) before the first `dbt run` on a semantic view.
+- Run the grants in `admin/exact_grants.sql` section 9 (`SEMANTIC VIEWS`) in Snowsight
+  once — `CREATE SEMANTIC VIEW` for `TRANSFORMER` on `ANALYTICS.PROD`, plus
+  `SELECT`/`REFERENCES` for `BI_READER`. `ANALYTICS_DEV` needs nothing extra:
+  `TRANSFORMER` owns any dev schema it creates and gets `CREATE SEMANTIC VIEW` there
+  for free.
 - Validate with `dbt run --select <semantic_view>`, then sanity-query the view in
   Snowsight to confirm metrics resolve.
