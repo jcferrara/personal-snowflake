@@ -1,0 +1,75 @@
+name: dbt run
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # GitHub Actions cron is UTC-only, so PST/PDT needs two entries to land
+    # at 5am Pacific year-round. The month boundaries are an approximation of
+    # the actual (Sunday-based) DST transition dates, so the run may land at
+    # 4am or 6am Pacific for up to ~1 week around the March/November switch.
+    # Runs a few hours after the Garmin extraction (garmin_extract.yml) so
+    # the day's raw data has landed before dbt transforms it.
+    - cron: "0 13 * 1-3,11-12 *" # 5am PST (standard time, roughly Nov-Mar)
+    - cron: "0 12 * 4-10 *" # 5am PDT (daylight time, roughly Apr-Oct)
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r dbt/requirements.txt
+
+      - name: Restore Snowflake private key
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$SNOWFLAKE_PRIVATE_KEY_B64" | base64 -d > "$RUNNER_TEMP/keys/snowflake_key.p8"
+          chmod 600 "$RUNNER_TEMP/keys/snowflake_key.p8"
+        env:
+          SNOWFLAKE_PRIVATE_KEY_B64: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_B64 }}
+
+      - name: Write dbt profiles.yml
+        run: |
+          mkdir -p "$RUNNER_TEMP/dbt-profiles"
+          cat > "$RUNNER_TEMP/dbt-profiles/profiles.yml" <<EOF
+          personal_snowflake:
+            target: prod
+            outputs:
+              prod:
+                type: snowflake
+                account: "${SNOWFLAKE_ACCOUNT}"
+                user: "${SNOWFLAKE_USER}"
+                role: TRANSFORMER
+                warehouse: TRANSFORM_WH
+                database: ANALYTICS
+                schema: PROD
+                private_key_path: "${SNOWFLAKE_PRIVATE_KEY_PATH}"
+                private_key_passphrase: "${SNOWFLAKE_PRIVATE_KEY_PASSPHRASE}"
+                threads: 4
+                client_session_keep_alive: false
+          EOF
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY_PATH: ${{ runner.temp }}/keys/snowflake_key.p8
+          SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+
+      - name: dbt deps
+        working-directory: dbt
+        run: dbt deps
+        env:
+          DBT_PROFILES_DIR: ${{ runner.temp }}/dbt-profiles
+
+      - name: dbt build
+        working-directory: dbt
+        run: dbt build
+        env:
+          DBT_PROFILES_DIR: ${{ runner.temp }}/dbt-profiles
