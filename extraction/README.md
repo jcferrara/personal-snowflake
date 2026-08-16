@@ -83,17 +83,13 @@ them off disk like a local run does:
 2. **Garmin proxy** — GitHub-hosted runners live on Azure/cloud IP ranges,
    which Garmin's Cloudflare front blocks with a 429 on the OAuth token
    exchange even when the cached session above is valid. Routing that one
-   call through a residential/ISP proxy fixes it:
-   1. Buy a single static residential (ISP) proxy IP — [IPRoyal's static
-      residential proxies](https://iproyal.com/static-residential-proxies/)
-      are the cheapest fit for this (~$2.70/mo for exactly one IP, no
-      forced bundle). Pick a location near you so the login doesn't look
-      geographically inconsistent to Garmin's own fraud checks.
-   2. Set the connection string it gives you (`http://user:pass@host:port`)
-      as a secret:
-      ```
-      gh secret set GARMIN_PROXY_URL
-      ```
+   call through a residential/ISP proxy fixes it. We use a
+   [Webshare](https://www.webshare.io/) static residential (ISP) proxy IP —
+   grab its connection details from the Webshare dashboard's Proxy List page
+   (`http://username:password@host:port`) and set it as a secret:
+   ```
+   gh secret set GARMIN_PROXY_URL
+   ```
    `garmin_client.py` only routes the Garmin login/API calls through it —
    Snowflake isn't IP-blocked, so that connection stays direct. Leaving
    `GARMIN_PROXY_URL` unset (the default for local runs) talks to Garmin
