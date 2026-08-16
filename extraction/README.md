@@ -56,6 +56,50 @@ Example daily run at 6am, logging output:
 0 6 * * * cd /path/to/personal-snowflake/extraction && /path/to/personal-snowflake/.venv/bin/python -m garmin.main >> /tmp/garmin_extract.log 2>&1
 ```
 
+## GitHub Actions
+
+`.github/workflows/garmin_extract.yml` runs the extraction once a day at
+2am Pacific (two `cron` entries handle the PST/PDT switch, since Actions
+schedules are UTC-only — see the workflow file for the ~1 week of fuzz
+around each DST transition). It can also be triggered manually from the
+Actions tab (`workflow_dispatch`).
+
+The runner starts from nothing each time, so it needs your Garmin session
+cache and Snowflake key handed to it as repo secrets rather than reading
+them off disk like a local run does:
+
+1. **Garmin session** — the workflow restores `~/.garminconnect` from a
+   `GARMIN_TOKEN_STORE` secret so it never has to log in (and hit an MFA
+   prompt) on the runner. Seed it from a cache you've already logged in
+   with locally:
+   ```
+   tar -C ~/.garminconnect -czf - oauth1_token.json oauth2_token.json | base64 | gh secret set GARMIN_TOKEN_STORE
+   ```
+   The long-lived `oauth1_token.json` is what actually needs to stay valid;
+   Garmin expires it roughly once a year, at which point the workflow will
+   start failing on login and this needs to be re-run after a fresh local
+   login.
+
+2. **Snowflake private key**:
+   ```
+   base64 < /path/to/your/rsa_key.p8 | gh secret set SNOWFLAKE_PRIVATE_KEY_B64
+   ```
+   Add `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` too if your key is encrypted.
+
+3. **Everything else**, one secret per env var from `.env.example`:
+   ```
+   gh secret set GARMIN_EMAIL
+   gh secret set GARMIN_PASSWORD
+   gh secret set SNOWFLAKE_ACCOUNT
+   gh secret set SNOWFLAKE_USER
+   gh secret set SNOWFLAKE_ROLE
+   gh secret set SNOWFLAKE_WAREHOUSE
+   gh secret set SNOWFLAKE_DATABASE
+   gh secret set SNOWFLAKE_SCHEMA
+   ```
+   (`gh secret set NAME` with no `--body` prompts for the value, or reads
+   stdin if piped, so nothing sensitive ends up in shell history.)
+
 ## Adding a new metric
 
 Most Garmin endpoints just need a new row in `garmin/collectors.py`'s
