@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_apple_health__body_metrics
+    description: >
+      One row per body-metric reading from Apple Health. Grain:
+      metric_name + recorded_at + source_app (surrogate key
+      body_metric_id).
+    columns:
+      - name: body_metric_id
+        description: >
+          Primary key. Surrogate key generated from metric_name,
+          recorded_at, and source_app, since the source table has no
+          natural id column.
+        data_tests:
+          - unique
+          - not_null
+      - name: metric_name
+        description: >
+          The Apple Health metric type this reading belongs to (e.g.
+          "body_mass_index").
+      - name: unit
+        description: Unit of measure for metric_value (e.g. "count").
+      - name: source_app
+        description: >
+          Name of the app or integration that exported this reading to
+          Snowflake (e.g. "health_auto_export").
+      - name: metric_value
+        description: The reading's numeric value, denominated in unit.
+      - name: recorded_date
+        description: Calendar date the reading was recorded, derived from recorded_at.
+      - name: recorded_at
+        description: Timestamp the reading was recorded on the source device.
+      - name: ingested_at
+        description: When this row was landed into RAW.APPLE_HEALTH.BODY_METRICS.
