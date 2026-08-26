@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: apple_health
+    database: RAW
+    schema: APPLE_HEALTH
+    description: >
+      Apple Health data exported from the iOS Health Auto Export app and
+      landed as a flat, already-relational table (not semi-structured JSON
+      like the Garmin source). See extraction/ for landing details once a
+      pipeline exists in this repo.
+    tables:
+      - name: body_metrics
+        description: >
+          One row per body-metric reading (e.g. body mass index, weight),
+          keyed by the combination of metric_name, recorded_at, and source.
+          Landed by the health_auto_export iOS app.
