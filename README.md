@@ -1,7 +1,8 @@
 # personal-snowflake
 
-Personal data ecosystem — a monorepo covering both extraction (Python
-scripts that land raw data into Snowflake) and transformation (dbt).
+Personal data ecosystem — a monorepo covering extraction (Python scripts
+that land raw data into Snowflake), transformation (dbt), and reporting
+(Observable Framework).
 
 ## Layout
 
@@ -9,7 +10,8 @@ scripts that land raw data into Snowflake) and transformation (dbt).
 personal-snowflake/
 ├── admin/         Snowflake account setup SQL (local only, gitignored)
 ├── dbt/           dbt project — transforms RAW.* into ANALYTICS.PROD
-└── extraction/    Python scripts that extract from source APIs into RAW.*
+├── extraction/    Python scripts that extract from source APIs into RAW.*
+└── reporting/     Observable Framework dashboards over ANALYTICS.*
 ```
 
 ## dbt
@@ -26,3 +28,17 @@ Uses the `personal_snowflake` profile in `~/.dbt/profiles.yml`, role
 ## extraction
 
 See [extraction/README.md](extraction/README.md).
+
+## reporting
+
+Observable Framework app that reads `ANALYTICS.*` via `snowflake-sdk` data
+loaders and renders static dashboards. Needs Node 18+.
+
+```
+cd reporting
+npm install
+cp .env.example .env
+npm run dev
+```
+
+See [reporting/README.md](reporting/README.md).

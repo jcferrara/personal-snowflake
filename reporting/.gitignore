@@ -1,0 +1,15 @@
+node_modules/
+/dist/
+
+# Observable Framework build cache — includes data-loader output
+# (src/.observablehq/cache/data/*) and a local npm mirror. The pattern
+# needs the ** prefix: Framework puts this under src/, and a plain
+# ".observablehq/cache/" would only match it at the reporting/ root.
+**/.observablehq/cache/
+
+*.log
+
+# secrets
+.env
+.env.*
+!.env.example
