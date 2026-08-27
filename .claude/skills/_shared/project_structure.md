@@ -134,8 +134,9 @@ personal_snowflake
   `intermediate` subfolder.
 - File naming: **`int_[entity]s_[verb]s.sql`** — verbs describe the transformation
   (`pivoted`, `aggregated_to_day`, `joined`, `fanned_out_by_quantity`, `summed`,
-  `funnel_created`). Drop the double underscores used in staging, unless the model still
-  operates at the source-system level (e.g. `int_garmin__activities_summed`).
+  `funnel_created`). **Drop the double underscores used in staging** — that convention
+  is staging-only, even for a model that still operates at a single source system
+  (e.g. `int_garmin_activities_summed`, not `int_garmin__activities_summed`).
 
 ## Marts folder — organize by DATA DOMAIN
 

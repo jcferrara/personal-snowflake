@@ -2,7 +2,7 @@ with
 
 {{
     import_models(
-        refs = [ref('int_garmin__activity_samples_unpivoted')],
+        refs = [ref('int_garmin_activity_samples_unpivoted')],
         ctes = ['garmin_activity_samples']
     )
 }},
