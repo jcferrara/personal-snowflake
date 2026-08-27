@@ -1,0 +1,63 @@
+version: 2
+
+models:
+  - name: metrics_daily_body_metrics
+    description: >
+      True 7- and 14-calendar-day moving averages of body mass index,
+      body fat percentage, and weight, built on fct_body_metrics joined
+      onto a dim_dates spine (bounded to the range fct_body_metrics
+      actually covers) so gap days without a reading still get a row and
+      each window is a real calendar window rather than "last N available
+      readings". Grain: one row per calendar day per source_app within
+      that range.
+    columns:
+      - name: body_metric_day_id
+        description: >
+          Primary key. Surrogate key on (recorded_date, source_app),
+          generated here rather than reused from fct_body_metrics since
+          this model's grain includes gap days with no fct row.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_app
+        description: >
+          Name of the app or integration that exported this reading (e.g.
+          "health_auto_export").
+      - name: body_mass_index
+        description: >
+          That day's average body mass index, from fct_body_metrics. NULL
+          on a gap day with no reading.
+      - name: body_fat_percentage
+        description: >
+          That day's average body fat percentage, from fct_body_metrics.
+          NULL on a gap day with no reading.
+      - name: weight_lb
+        description: >
+          That day's average weight in pounds, from fct_body_metrics.
+          NULL on a gap day with no reading.
+      - name: body_mass_index_7dma
+        description: >
+          Body mass index averaged over this day and the 6 preceding
+          calendar days, skipping gap days with no reading.
+      - name: body_fat_percentage_7dma
+        description: >
+          Body fat percentage averaged over this day and the 6 preceding
+          calendar days, skipping gap days with no reading.
+      - name: weight_lb_7dma
+        description: >
+          Weight in pounds averaged over this day and the 6 preceding
+          calendar days, skipping gap days with no reading.
+      - name: body_mass_index_14dma
+        description: >
+          Body mass index averaged over this day and the 13 preceding
+          calendar days, skipping gap days with no reading.
+      - name: body_fat_percentage_14dma
+        description: >
+          Body fat percentage averaged over this day and the 13 preceding
+          calendar days, skipping gap days with no reading.
+      - name: weight_lb_14dma
+        description: >
+          Weight in pounds averaged over this day and the 13 preceding
+          calendar days, skipping gap days with no reading.
+      - name: recorded_date
+        description: Calendar date this row represents.

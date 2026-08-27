@@ -30,9 +30,10 @@ complexity out of marts and are generally **not exposed to end users**.
    understandable thing. Name it with a **verb** describing what it does.
 2. **Naming:** `int_[entity]s_[verb]s.sql` — verbs like `pivoted`,
    `aggregated_to_day`, `joined`, `fanned_out_by_quantity`, `summed`,
-   `funnel_created`. Reference the unified entity. **Drop the double
-   underscores** used in staging, *unless* the model still operates at source-system
-   level (e.g. `int_garmin__activities_summed`, which you'd later union).
+   `funnel_created`. Reference the unified entity. **Drop the double underscores**
+   used in staging — that convention is staging-only, even for a model that still
+   operates at a single source system (e.g. `int_garmin_activities_summed`, not
+   `int_garmin__activities_summed`).
    - **In practice**, this repo names intermediates descriptively as
      `int_<what_it_produces>` (e.g. `int_daily_wellness_joined`,
      `int_transactions_categorized`, `int_account_balances_rolled_up`) rather than

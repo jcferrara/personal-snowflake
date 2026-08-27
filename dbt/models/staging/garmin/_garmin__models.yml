@@ -68,7 +68,7 @@ models:
       arrays. Grain: activity_id. The set of metrics captured, and where
       each lands in a sample, varies by activity type, so this model
       doesn't flatten to per-sample rows — see
-      int_garmin__activity_samples_unpivoted for that.
+      int_garmin_activity_samples_unpivoted for that.
     columns:
       - name: activity_id
         description: >

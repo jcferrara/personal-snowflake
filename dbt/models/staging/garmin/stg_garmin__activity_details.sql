@@ -20,7 +20,7 @@ renamed as (
         -- activity_detail_metrics is the per-sample array that layout
         -- describes. Exploding these into one row per sample changes grain,
         -- so that join belongs in an intermediate model
-        -- (int_garmin__activity_samples_unpivoted), not here.
+        -- (int_garmin_activity_samples_unpivoted), not here.
         raw_data:metricDescriptors::variant as metric_descriptors,
         raw_data:activityDetailMetrics::variant as activity_detail_metrics,
         -- lineage

@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: fct_body_metrics
+    description: >
+      Daily body-metric aggregate (body mass index, body fat percentage,
+      weight). Built from int_body_metrics_aggregated_to_day. Grain: one
+      row per day per source_app — a day with more than one reading (e.g.
+      a scale synced twice) is averaged to a single row upstream.
+    columns:
+      - name: body_metric_day_id
+        description: >
+          Primary key. Surrogate key on (recorded_date, source_app), since
+          a day's aggregate has no natural id in the source.
+        data_tests:
+          - unique
+          - not_null
+      - name: source_app
+        description: >
+          Name of the app or integration that exported this reading (e.g.
+          "health_auto_export").
+      - name: body_mass_index
+        description: >
+          Body mass index, averaged across the day's readings. NULL if no
+          reading that day captured it.
+      - name: body_fat_percentage
+        description: >
+          Body fat percentage, averaged across the day's readings. NULL if
+          no reading that day captured it.
+      - name: weight_lb
+        description: >
+          Weight in pounds, averaged across the day's readings. NULL if no
+          reading that day captured it.
+      - name: recorded_date
+        description: Calendar date this row represents.
