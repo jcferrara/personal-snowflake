@@ -1,11 +1,13 @@
 # AGENTS.md
 
 This is a **personal data monorepo**: `extraction/` (Python scripts that land raw
-source data into Snowflake's `RAW` database) and `dbt/` (a **dbt analytics engineering
-project** that transforms `RAW.*` into `ANALYTICS.*`). Target warehouse is Snowflake;
-dbt is run via the dbt Core CLI (no dbt Cloud). This file's standards below are for
-**dbt work**; `extraction/` is plain Python governed by `extraction/README.md`, not by
-the `.claude/skills/` dbt standards.
+source data into Snowflake's `RAW` database), `dbt/` (a **dbt analytics engineering
+project** that transforms `RAW.*` into `ANALYTICS.*`), and `reporting/` (an
+**Observable Framework** app that renders dashboards from `ANALYTICS.*`). Target
+warehouse is Snowflake; dbt is run via the dbt Core CLI (no dbt Cloud). This file's
+standards below are for **dbt work**; `extraction/` is plain Python governed by
+`extraction/README.md` and `reporting/` is a Node/TypeScript project governed by
+`reporting/README.md` — neither is subject to the `.claude/skills/` dbt standards.
 
 ## Where the standards live
 
