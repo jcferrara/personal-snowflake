@@ -156,7 +156,10 @@ undocumented) fantasy v3 API — no third-party wrapper — and lands it in
 | `FREE_AGENTS` | `{season}-{week}-{player_id}` | `kona_player_info` |
 
 `MATCHUPS` payloads carry the full nested per-player boxscore roster for both
-sides — flatten it in dbt, not here. Because every table shares the raw
+sides — flatten it in dbt, not here. `FREE_AGENTS`, despite the name, is a
+weekly snapshot of the **whole** player pool — rostered players included, with
+`onTeamId` on each row so dbt can split them — so ownership %, projections and
+ratings land for every player, not just the waiver wire. Because every table shares the raw
 four-column shape, the `RAW_DATA:` / `RAW_DATA::` VARIANT path syntax is how
 dbt staging reads it (same as `RAW.GARMIN`).
 
@@ -192,9 +195,10 @@ safe and never duplicates. There's no watermark table: the current season is
 cheap to re-pull in full, and past seasons are immutable. If one collector
 errors mid-run, the rest of that season still runs.
 
-**By design:** `FREE_AGENTS` is a snapshot of *now* — ESPN exposes no
-historical free-agent pool, so it's forward-only and skipped for any season
-before the current one (including during `--backfill`). Pre-2018 seasons use a
+**By design:** `FREE_AGENTS` is a snapshot of the pool *right now* — ESPN
+exposes no historical pool, so it's forward-only and skipped for any season
+before the current one (including during `--backfill`). Runs 3x/week overwrite
+that week's rows, so one snapshot per week is retained (the last run). Pre-2018 seasons use a
 different ESPN URL shape (`leagueHistory` vs `seasons/{year}`) and are the most
 likely to have drifted field names — run `explore.py <season>` against an old
 season before backfilling it.

@@ -282,3 +282,109 @@ models:
           Array of player_ids in the optimal lineup, ascending. VARIANT
           passthrough for downstream models that flag which roster rows
           were optimal starts.
+
+  - name: int_fantasy_football_player_weeks
+    description: >
+      One row per player per season-week, unioning the rostered players
+      (from int_fantasy_football_matchup_rosters) with the weekly
+      player-pool snapshot (stg_fantasy_football__free_agents). Grain:
+      player_id x season_year x week.
+
+      The point-in-time feature spine for player-value modelling: the
+      realized outcome (actual_points) alongside what was knowable when the
+      snapshot was taken — ESPN's projection, ownership and start rates,
+      ADP / auction value, injury status, ratings. Rostered rows also carry
+      how the player was used that week. Until the pool snapshot stops
+      filtering to free agents, rostered players in past seasons have NULL
+      market features (percent_owned etc.); their actual_points and roster
+      usage are still populated from the boxscore.
+    columns:
+      - name: sk
+        description: Surrogate key (player_id, season_year, week).
+        data_tests:
+          - unique
+          - not_null
+      - name: player_id
+        description: >
+          ESPN player id. FK to dim_fantasy_football_players. Negative for
+          team defenses / head-coach entities.
+      - name: season_year
+        description: Season year.
+      - name: week
+        description: Scoring period / NFL week.
+      - name: player_position_id
+        description: >
+          ESPN defaultPositionId, from the roster row if rostered else the
+          pool snapshot. FK to the espn_positions seed.
+      - name: pro_team_id
+        description: Player's NFL team id for the week (ESPN proTeamId).
+      - name: fantasy_team_id
+        description: >
+          ESPN fantasy team id the player was rostered on that week. NULL
+          when the player was a free agent.
+      - name: player_full_name
+        description: Player display name as observed that week.
+      - name: lineup_slot
+        description: >
+          Slot the player occupied in the fantasy lineup that week ("QB",
+          "BE", "RB/WR/TE", ...). NULL when not rostered.
+      - name: roster_status
+        description: >
+          'rostered', 'waivers', or 'free_agent' for the week. NULL only if
+          a player somehow appears on neither side.
+      - name: injury_status
+        description: >
+          ESPN injury designation from the pool snapshot ("ACTIVE",
+          "QUESTIONABLE", "OUT", ...). NULL when the player is not in that
+          week's snapshot.
+      - name: actual_points
+        description: >
+          Fantasy points the player actually scored that week under this
+          league's scoring — the modelling label. From the boxscore for
+          rostered players, else from the pool snapshot's stats array.
+          NULL for a week not yet played.
+      - name: espn_projected_points
+        description: >
+          ESPN's pre-game projected points for the week (statSourceId = 1).
+          The baseline forecast to beat.
+      - name: percent_owned
+        description: >
+          Percent of ESPN leagues rostering the player, from the pool
+          snapshot. NULL when the player is not in that week's snapshot.
+      - name: percent_owned_change
+        description: Recent change in percent_owned (trend signal).
+      - name: percent_started
+        description: Percent of ESPN leagues starting the player that week.
+      - name: average_draft_position
+        description: Average draft position across ESPN leagues (preseason signal).
+      - name: auction_value_average
+        description: Average auction draft value across ESPN leagues.
+      - name: keeper_value
+        description: Keeper value ESPN assigns the player.
+      - name: is_rostered
+        description: True when the player was on a fantasy roster that week.
+      - name: is_starter
+        description: >
+          True when the player was in a scoring lineup slot. NULL when not
+          rostered.
+      - name: is_bench
+        description: True when the player was on the bench. NULL when not rostered.
+      - name: is_injured_reserve
+        description: True when the player was in the IR slot. NULL when not rostered.
+      - name: is_injured
+        description: >
+          True when the pool snapshot flags the player injured. False when
+          not flagged or not in the snapshot.
+      - name: eligible_slots
+        description: >
+          Array of lineupSlotIds the player is eligible to fill. VARIANT
+          passthrough.
+      - name: ratings
+        description: >
+          ESPN's raw player ratings object from the pool snapshot. VARIANT
+          passthrough. NULL when not in that week's snapshot.
+      - name: snapshot_at
+        description: >
+          When the pool snapshot that produced this row's market features
+          was extracted — the as-of time for leakage control. NULL for
+          rows that exist only on the roster side.
