@@ -111,3 +111,102 @@ models:
           Raw array of lineupSlotIds this player is eligible to fill,
           from player.eligibleSlots. VARIANT passthrough — consumed by the
           optimal-lineup model to decide legal lineup assignments.
+
+  - name: int_fantasy_football_lineup_slots
+    description: >
+      This league's starting-lineup requirements per season: one row per
+      season x starting slot, with how many of that slot a legal lineup
+      fills. Grain: season_year x lineup_slot_id.
+
+      Flattened from stg_fantasy_football__league_settings.roster_settings
+      (lineupSlotCounts) and filtered to scoring slots via the
+      espn_lineup_slots seed — bench and IR are dropped. The config drifts
+      across seasons: 2019-2021 carried a Head Coach slot and a single
+      RB/WR/TE flex; 2022 onward drops Head Coach and adds a WR/TE flex.
+      Consumed by int_fantasy_football_optimal_lineups as the fill target.
+    columns:
+      - name: sk
+        description: Surrogate key (season_year, lineup_slot_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: season_year
+        description: Season the requirement applies to.
+      - name: lineup_slot_id
+        description: >
+          ESPN lineupSlotId of a starting slot. FK to the espn_lineup_slots
+          seed.
+      - name: lineup_slot
+        description: Short slot code from the seed (e.g. "QB", "RB/WR/TE").
+      - name: required_count
+        description: >
+          How many of this slot a legal starting lineup fills that season
+          (e.g. RB = 2, QB = 1).
+
+  - name: int_fantasy_football_optimal_lineups
+    description: >
+      The best legal starting lineup each team could have fielded from the
+      players on its roster that week, versus what it actually started.
+      Grain: matchup_id x team_id (one row per team-week).
+
+      Built from int_fantasy_football_matchup_rosters (bench included, IR
+      excluded, points floored at 0) against int_fantasy_football_lineup_
+      slots. Assignment is scarcity-first greedy: fill the position-locked
+      slots from each position's players ranked by actual points, then the
+      WR/TE flex, then the RB/WR/TE flex, each from the players the earlier
+      fills left behind. For this league's slot structure (at most two
+      nested flex slots) that greedy is exact — see the
+      assert_fantasy_football_optimal_lineup_ge_actual test, which enforces
+      optimal_points >= actual_starter_points.
+    columns:
+      - name: sk
+        description: Surrogate key (matchup_id, team_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: matchup_id
+        description: FK to stg_fantasy_football__matchups.matchup_id.
+      - name: season_year
+        description: Season year, carried from the matchup.
+      - name: week
+        description: Scoring period / NFL week, carried from the matchup.
+      - name: team_id
+        description: >
+          ESPN team id of the fantasy team. FK to
+          stg_fantasy_football__teams.
+      - name: opponent_team_id
+        description: >
+          ESPN team id of the other side of the matchup. NULL / 0 for
+          playoff-bye matchups.
+      - name: optimal_points
+        description: >
+          Total actual points of the best legal lineup the greedy
+          assignment found from this roster. The ceiling the manager was
+          playing against.
+      - name: actual_starter_points
+        description: >
+          Total actual points of the players the manager actually started
+          (sum of actual_points where is_starter). Recomputed from the
+          roster here, not read from the matchup score — the two agree
+          except for the 2022 week 17 archive gap.
+      - name: points_left_on_bench
+        description: >
+          optimal_points - actual_starter_points. Points the manager gave
+          up through lineup decisions that week. 0 when the lineup was
+          optimal.
+      - name: lineup_efficiency
+        description: >
+          actual_starter_points / optimal_points (div0 -> 0 when optimal
+          is 0). 1.0 means a perfectly set lineup.
+      - name: optimal_starter_count
+        description: >
+          Number of slots the optimal lineup filled. Below the season's
+          full starting-slot count when the roster lacked enough eligible,
+          non-IR players at some position.
+      - name: actual_starter_count
+        description: Number of players the manager actually started.
+      - name: optimal_player_ids
+        description: >
+          Array of player_ids in the optimal lineup, ascending. VARIANT
+          passthrough for downstream models that flag which roster rows
+          were optimal starts.
