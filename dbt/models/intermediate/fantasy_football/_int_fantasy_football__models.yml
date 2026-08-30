@@ -1,0 +1,390 @@
+version: 2
+
+models:
+  - name: int_fantasy_football_matchup_team_scores
+    description: >
+      Each matchup unpivoted to one row per team (home and away sides split
+      apart), so the grain is team-week. Grain: matchup_id x team_id.
+
+      Straight re-grain of stg_fantasy_football__matchups — points, tiebreak
+      and adjustment are passed through unchanged, result (W/L/T) is derived
+      from the recorded winner and the side, and margin is this team's
+      points minus the opponent's. Playoff-bye team-weeks appear once with
+      no opponent (is_bye); the empty away side of a bye matchup is dropped.
+      The scoring backbone for standings and manager-week facts.
+    columns:
+      - name: sk
+        description: Surrogate key (matchup_id, team_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: matchup_id
+        description: FK to stg_fantasy_football__matchups.matchup_id.
+      - name: season_year
+        description: Season year, carried from the matchup.
+      - name: week
+        description: Scoring period / NFL week, from the matchup natural key.
+      - name: matchup_period_id
+        description: >
+          ESPN matchupPeriodId. Equals week in the regular season; can
+          differ in multi-week playoff rounds.
+      - name: team_id
+        description: >
+          ESPN team id of this side (unique within a season). FK to
+          stg_fantasy_football__teams.
+      - name: opponent_team_id
+        description: >
+          ESPN team id of the other side. NULL for playoff-bye team-weeks.
+      - name: result
+        description: >
+          'W', 'L', or 'T' from this team's perspective, derived from the
+          matchup winner and which side this row is. NULL while the matchup
+          is not yet complete (and for byes).
+      - name: playoff_tier_type
+        description: >
+          ESPN playoffTierType ("NONE" for regular-season games, e.g.
+          "WINNERS_BRACKET", "LOSERS_CONSOLATION_LADDER").
+      - name: actual_points
+        description: Points this team scored in the matchup (home/away totalPoints).
+      - name: opponent_points
+        description: Points the opponent scored. NULL for byes.
+      - name: margin
+        description: actual_points - opponent_points. Positive is a win. NULL for byes.
+      - name: tiebreak
+        description: ESPN tiebreak points for this side.
+      - name: adjustment
+        description: Manual score adjustment applied to this side, if any.
+      - name: is_home
+        description: True when this row is the home side of the matchup.
+      - name: is_win
+        description: True when result = 'W'. False when result is NULL.
+      - name: is_loss
+        description: True when result = 'L'. False when result is NULL.
+      - name: is_tie
+        description: True when result = 'T'. False when result is NULL.
+      - name: is_bye
+        description: >
+          True when this team-week has no opponent (a playoff first-round
+          bye for a top seed).
+      - name: is_playoff
+        description: True when the matchup is a playoff-bracket game.
+      - name: is_complete
+        description: >
+          True when the matchup has a decided winner (not yet true for
+          unplayed 2026 weeks).
+
+  - name: int_fantasy_football_matchup_rosters
+    description: >
+      Every fantasy team's roster for every matchup, exploded to one row
+      per rostered player and re-grained to be team-centric (home and away
+      sides unioned, each row carrying its own team_id and the opponent).
+      Grain: matchup_id x team_id x player_id.
+
+      Built by flattening stg_fantasy_football__matchups' rosterForCurrent
+      ScoringPeriod entries — the only roster snapshot ESPN returns that
+      has both real lineupSlotId values and the full bench. Starter vs
+      bench comes from the espn_lineup_slots seed; actual and projected
+      weekly points come from each player's stats array (single-week split,
+      this matchup's scoring period).
+
+      This is a building block for lineup-decision analysis (optimal
+      lineups, points left on the bench, start/sit accuracy), not a
+      reporting surface. Playoff-bye matchups have no opponent roster and
+      so contribute rows for one side only. A handful of 2022 week 17
+      team-matchups don't reconcile to the recorded score — see the
+      assert_fantasy_football_matchup_roster_points_reconcile test.
+    columns:
+      - name: sk
+        description: >
+          Surrogate key (matchup_id, team_id, player_id). This model's
+          grain has no single natural key in the source.
+        data_tests:
+          - unique
+          - not_null
+      - name: matchup_id
+        description: >
+          FK to stg_fantasy_football__matchups.matchup_id. Encodes
+          season, week, and matchup number.
+      - name: season_year
+        description: Season year, carried from the matchup for convenience.
+      - name: week
+        description: >
+          Scoring period / NFL week, carried from the matchup. The stats
+          split used for actual_points / projected_points is pinned to
+          this week.
+      - name: team_id
+        description: >
+          ESPN team id of the fantasy team whose roster this row belongs
+          to (unique within a season). FK to stg_fantasy_football__teams.
+      - name: opponent_team_id
+        description: >
+          ESPN team id of the other side of this matchup. NULL / 0 for
+          playoff-bye matchups that have no real opponent.
+      - name: player_id
+        description: >
+          ESPN player id. Negative for team defenses (D/ST). Joins to
+          stg_fantasy_football__draft_picks.player_id, the player-pool
+          snapshot, and dim_fantasy_football_players.
+      - name: lineup_slot_id
+        description: >
+          ESPN lineupSlotId this player occupied for the matchup. FK to
+          the espn_lineup_slots seed.
+      - name: player_position_id
+        description: >
+          Player's ESPN defaultPositionId. FK to the espn_positions seed.
+      - name: pro_team_id
+        description: NFL team id the player belonged to (ESPN proTeamId).
+      - name: player_full_name
+        description: Player display name at the time of the matchup (player.fullName).
+      - name: player_first_name
+        description: Player first name (player.firstName).
+      - name: player_last_name
+        description: Player last name (player.lastName).
+      - name: lineup_slot
+        description: >
+          Short slot code for lineup_slot_id from the seed (e.g. "QB",
+          "RB/WR/TE", "BE", "IR").
+      - name: player_position
+        description: >
+          Short position code for player_position_id from the seed (QB,
+          RB, WR, TE, K, HC, D/ST).
+      - name: actual_points
+        description: >
+          Fantasy points the player actually scored this week, under this
+          league's scoring rules (stats element with statSourceId = 0,
+          statSplitTypeId = 1, scoringPeriodId = week; appliedTotal).
+          NULL when ESPN has no actual line for the player that week (bye,
+          or a not-yet-played week).
+      - name: projected_points
+        description: >
+          ESPN's pre-game projection for the player this week (same stats
+          filter with statSourceId = 1). NULL when no projection exists.
+      - name: points_vs_projection
+        description: >
+          actual_points - projected_points. Positive when the player beat
+          his projection. NULL when either input is NULL.
+      - name: is_starter
+        description: >
+          True when the player counted toward the team's weekly score,
+          i.e. lineup_slot_id is any real position or flex slot (from the
+          seed). False for bench and IR. False when the slot id is
+          unknown.
+      - name: is_bench
+        description: True only when the player sat on the bench (slot BE / 20).
+      - name: is_injured_reserve
+        description: True only when the player was in the IR slot (21).
+      - name: is_home
+        description: >
+          True when this roster is the home side of the matchup. Mostly
+          cosmetic for scoring (no home/away advantage) but preserved for
+          reconciliation against stg matchup home/away columns.
+      - name: eligible_slots
+        description: >
+          Raw array of lineupSlotIds this player is eligible to fill,
+          from player.eligibleSlots. VARIANT passthrough — consumed by the
+          optimal-lineup model to decide legal lineup assignments.
+
+  - name: int_fantasy_football_lineup_slots
+    description: >
+      This league's starting-lineup requirements per season: one row per
+      season x starting slot, with how many of that slot a legal lineup
+      fills. Grain: season_year x lineup_slot_id.
+
+      Flattened from stg_fantasy_football__league_settings.roster_settings
+      (lineupSlotCounts) and filtered to scoring slots via the
+      espn_lineup_slots seed — bench and IR are dropped. The config drifts
+      across seasons: 2019-2021 carried a Head Coach slot and a single
+      RB/WR/TE flex; 2022 onward drops Head Coach and adds a WR/TE flex.
+      Consumed by int_fantasy_football_optimal_lineups as the fill target.
+    columns:
+      - name: sk
+        description: Surrogate key (season_year, lineup_slot_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: season_year
+        description: Season the requirement applies to.
+      - name: lineup_slot_id
+        description: >
+          ESPN lineupSlotId of a starting slot. FK to the espn_lineup_slots
+          seed.
+      - name: lineup_slot
+        description: Short slot code from the seed (e.g. "QB", "RB/WR/TE").
+      - name: required_count
+        description: >
+          How many of this slot a legal starting lineup fills that season
+          (e.g. RB = 2, QB = 1).
+
+  - name: int_fantasy_football_optimal_lineups
+    description: >
+      The best legal starting lineup each team could have fielded from the
+      players on its roster that week, versus what it actually started.
+      Grain: matchup_id x team_id (one row per team-week).
+
+      Built from int_fantasy_football_matchup_rosters (bench included, IR
+      excluded, points floored at 0) against int_fantasy_football_lineup_
+      slots. Assignment is scarcity-first greedy: fill the position-locked
+      slots from each position's players ranked by actual points, then the
+      WR/TE flex, then the RB/WR/TE flex, each from the players the earlier
+      fills left behind. For this league's slot structure (at most two
+      nested flex slots) that greedy is exact — see the
+      assert_fantasy_football_optimal_lineup_ge_actual test, which enforces
+      optimal_points >= actual_starter_points.
+    columns:
+      - name: sk
+        description: Surrogate key (matchup_id, team_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: matchup_id
+        description: FK to stg_fantasy_football__matchups.matchup_id.
+      - name: season_year
+        description: Season year, carried from the matchup.
+      - name: week
+        description: Scoring period / NFL week, carried from the matchup.
+      - name: team_id
+        description: >
+          ESPN team id of the fantasy team. FK to
+          stg_fantasy_football__teams.
+      - name: opponent_team_id
+        description: >
+          ESPN team id of the other side of the matchup. NULL / 0 for
+          playoff-bye matchups.
+      - name: optimal_points
+        description: >
+          Total actual points of the best legal lineup the greedy
+          assignment found from this roster. The ceiling the manager was
+          playing against.
+      - name: actual_starter_points
+        description: >
+          Total actual points of the players the manager actually started
+          (sum of actual_points where is_starter). Recomputed from the
+          roster here, not read from the matchup score — the two agree
+          except for the 2022 week 17 archive gap.
+      - name: points_left_on_bench
+        description: >
+          optimal_points - actual_starter_points. Points the manager gave
+          up through lineup decisions that week. 0 when the lineup was
+          optimal.
+      - name: lineup_efficiency
+        description: >
+          actual_starter_points / optimal_points (div0 -> 0 when optimal
+          is 0). 1.0 means a perfectly set lineup.
+      - name: optimal_starter_count
+        description: >
+          Number of slots the optimal lineup filled. Below the season's
+          full starting-slot count when the roster lacked enough eligible,
+          non-IR players at some position.
+      - name: actual_starter_count
+        description: Number of players the manager actually started.
+      - name: optimal_player_ids
+        description: >
+          Array of player_ids in the optimal lineup, ascending. VARIANT
+          passthrough for downstream models that flag which roster rows
+          were optimal starts.
+
+  - name: int_fantasy_football_player_weeks
+    description: >
+      One row per player per season-week, unioning the rostered players
+      (from int_fantasy_football_matchup_rosters) with the weekly
+      player-pool snapshot (stg_fantasy_football__player_pool). Grain:
+      player_id x season_year x week.
+
+      The point-in-time feature spine for player-value modelling: the
+      realized outcome (actual_points) alongside what was knowable when the
+      snapshot was taken — ESPN's projection, ownership and start rates,
+      ADP / auction value, injury status, ratings. Rostered rows also carry
+      how the player was used that week. Past seasons (before the pool
+      snapshot captured rostered players) have NULL market features
+      (percent_owned etc.) on rostered rows; their actual_points and roster
+      usage are still populated from the boxscore.
+    columns:
+      - name: sk
+        description: Surrogate key (player_id, season_year, week).
+        data_tests:
+          - unique
+          - not_null
+      - name: player_id
+        description: >
+          ESPN player id. FK to dim_fantasy_football_players. Negative for
+          team defenses / head-coach entities.
+      - name: season_year
+        description: Season year.
+      - name: week
+        description: Scoring period / NFL week.
+      - name: player_position_id
+        description: >
+          ESPN defaultPositionId, from the roster row if rostered else the
+          pool snapshot. FK to the espn_positions seed.
+      - name: pro_team_id
+        description: Player's NFL team id for the week (ESPN proTeamId).
+      - name: fantasy_team_id
+        description: >
+          ESPN fantasy team id the player was rostered on that week. NULL
+          when the player was a free agent.
+      - name: player_full_name
+        description: Player display name as observed that week.
+      - name: lineup_slot
+        description: >
+          Slot the player occupied in the fantasy lineup that week ("QB",
+          "BE", "RB/WR/TE", ...). NULL when not rostered.
+      - name: roster_status
+        description: >
+          'rostered', 'waivers', or 'free_agent' for the week. NULL only if
+          a player somehow appears on neither side.
+      - name: injury_status
+        description: >
+          ESPN injury designation from the pool snapshot ("ACTIVE",
+          "QUESTIONABLE", "OUT", ...). NULL when the player is not in that
+          week's snapshot.
+      - name: actual_points
+        description: >
+          Fantasy points the player actually scored that week under this
+          league's scoring — the modelling label. From the boxscore for
+          rostered players, else from the pool snapshot's stats array.
+          NULL for a week not yet played.
+      - name: espn_projected_points
+        description: >
+          ESPN's pre-game projected points for the week (statSourceId = 1).
+          The baseline forecast to beat.
+      - name: percent_owned
+        description: >
+          Percent of ESPN leagues rostering the player, from the pool
+          snapshot. NULL when the player is not in that week's snapshot.
+      - name: percent_owned_change
+        description: Recent change in percent_owned (trend signal).
+      - name: percent_started
+        description: Percent of ESPN leagues starting the player that week.
+      - name: average_draft_position
+        description: Average draft position across ESPN leagues (preseason signal).
+      - name: auction_value_average
+        description: Average auction draft value across ESPN leagues.
+      - name: keeper_value
+        description: Keeper value ESPN assigns the player.
+      - name: is_rostered
+        description: True when the player was on a fantasy roster that week.
+      - name: is_starter
+        description: >
+          True when the player was in a scoring lineup slot. NULL when not
+          rostered.
+      - name: is_bench
+        description: True when the player was on the bench. NULL when not rostered.
+      - name: is_injured_reserve
+        description: True when the player was in the IR slot. NULL when not rostered.
+      - name: is_injured
+        description: >
+          True when the pool snapshot flags the player injured. False when
+          not flagged or not in the snapshot.
+      - name: eligible_slots
+        description: >
+          Array of lineupSlotIds the player is eligible to fill. VARIANT
+          passthrough.
+      - name: ratings
+        description: >
+          ESPN's raw player ratings object from the pool snapshot. VARIANT
+          passthrough. NULL when not in that week's snapshot.
+      - name: snapshot_at
+        description: >
+          When the pool snapshot that produced this row's market features
+          was extracted — the as-of time for leakage control. NULL for
+          rows that exist only on the roster side.

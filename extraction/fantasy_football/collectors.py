@@ -107,14 +107,20 @@ def matchups(config: ESPNConfig, season: int, week: int) -> list[TableRows]:
     return [("MATCHUPS", rows)]
 
 
-def free_agents(config: ESPNConfig, season: int, week: int, limit: int = 3000) -> list[TableRows]:
-    """FREE_AGENTS — a point-in-time snapshot of the unrostered player pool.
+def player_pool(config: ESPNConfig, season: int, week: int, limit: int = 3000) -> list[TableRows]:
+    """PLAYER_POOL — a point-in-time snapshot of the whole fantasy player pool.
 
-    Forward-only: ESPN doesn't expose historical free-agent pools, so this is
-    never backfilled, only collected going forward. Over-fetches the player pool
-    (``x-fantasy-filter`` header raises ESPN's default result cap) and filters
-    client-side on ``onTeamId`` (0 / missing == unrostered), which is steadier
-    than ESPN's undocumented ``filterStatus`` syntax.
+    Lands *every* player ESPN surfaces for the week, rostered or not —
+    ``onTeamId`` is kept on each row so staging can split free agents from
+    rostered players. Capturing ownership %, ESPN projections, ratings and
+    injury status for rostered players too is what makes a uniform
+    per-player-per-week feature row possible downstream (see
+    int_fantasy_football_player_weeks).
+
+    Forward-only: ESPN doesn't expose historical pools, so this is never
+    backfilled, only collected going forward. Over-fetches (the
+    ``x-fantasy-filter`` header raises ESPN's default result cap), sorted by
+    percent owned so any truncation drops the least-relevant names.
     """
     # ESPN rejects a bare `limit` ("Limit request must be accompanied by a sort"),
     # so pair it with a percent-owned sort — descending, so the truncation (if
@@ -135,10 +141,13 @@ def free_agents(config: ESPNConfig, season: int, week: int, limit: int = 3000) -
         config=config,
     )
     players = data.get("players", []) or []
-    pool = [p for p in players if not p.get("onTeamId")]
     rows = [
         _row(f"{season}-{week}-{p.get('id', i)}", p, "kona_player_info")
-        for i, p in enumerate(pool)
+        for i, p in enumerate(players)
     ]
-    log.info("free_agents: %d unrostered of %d players fetched", len(pool), len(players))
-    return [("FREE_AGENTS", rows)]
+    rostered = sum(1 for p in players if p.get("onTeamId"))
+    log.info(
+        "player_pool: %d players fetched (%d rostered, %d free agents)",
+        len(players), rostered, len(players) - rostered,
+    )
+    return [("PLAYER_POOL", rows)]

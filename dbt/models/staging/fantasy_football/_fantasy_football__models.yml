@@ -394,14 +394,16 @@ models:
       - name: source_method
         description: ESPN views that produced this row ("mMatchupScore,mBoxscore").
 
-  - name: stg_fantasy_football__free_agents
+  - name: stg_fantasy_football__player_pool
     description: >
-      One row per unrostered player per point-in-time snapshot. Grain:
-      free_agent_snapshot_id (season + week + player id). Forward-only:
-      ESPN exposes no historical free-agent pool. Player stat arrays and
-      ratings are passed through as VARIANT.
+      One row per player per weekly player-pool snapshot. Grain:
+      player_pool_snapshot_id (season + week + player id). The collector
+      lands the whole pool — rostered players and free agents alike — so
+      use on_team_id to tell them apart. Forward-only: ESPN exposes no
+      historical pool. Player stat arrays and ratings are passed through
+      as VARIANT.
     columns:
-      - name: free_agent_snapshot_id
+      - name: player_pool_snapshot_id
         description: Primary key. "{season}-{week}-{player_id}".
         data_tests:
           - unique
@@ -418,9 +420,9 @@ models:
         description: Player's default position id, from player.defaultPositionId.
       - name: on_team_id
         description: >
-          Fantasy team id the player is on; 0 or null means unrostered.
-          The collector only lands unrostered players, so this is 0/null
-          for every row.
+          Fantasy team id the player is rostered on; 0 or null means the
+          player is a free agent / on waivers. The discriminator between
+          rostered players and the waiver wire in this snapshot.
       - name: player_full_name
         description: Player's full name, from player.fullName.
       - name: first_name
@@ -433,8 +435,8 @@ models:
           "QUESTIONABLE", "OUT", "INJURY_RESERVE").
       - name: availability_status
         description: >
-          Roster availability, from status (e.g. "FREEAGENT",
-          "WAIVERS").
+          Roster availability, from status (e.g. "FREEAGENT", "WAIVERS",
+          "ONTEAM" for rostered players).
       - name: percent_owned
         description: Percent of ESPN leagues the player is rostered in, from ownership.percentOwned.
       - name: percent_owned_change
@@ -470,6 +472,6 @@ models:
       - name: ratings
         description: Raw ratings object (ESPN's positional / total ratings). VARIANT passthrough.
       - name: extracted_at
-        description: When this row was landed into RAW.FANTASY_FOOTBALL.FREE_AGENTS.
+        description: When this row was landed into RAW.FANTASY_FOOTBALL.PLAYER_POOL.
       - name: source_method
         description: ESPN view that produced this row ("kona_player_info").

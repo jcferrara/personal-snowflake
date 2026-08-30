@@ -1,0 +1,25 @@
+slot_id,slot_name,slot_label,is_starter,is_bench,is_ir
+0,QB,Quarterback,true,false,false
+1,TQB,Team Quarterback,true,false,false
+2,RB,Running Back,true,false,false
+3,RB/WR,Flex (RB/WR),true,false,false
+4,WR,Wide Receiver,true,false,false
+5,WR/TE,Flex (WR/TE),true,false,false
+6,TE,Tight End,true,false,false
+7,OP,Offensive Player (Superflex),true,false,false
+8,DT,Defensive Tackle,true,false,false
+9,DE,Defensive End,true,false,false
+10,LB,Linebacker,true,false,false
+11,DL,Defensive Line,true,false,false
+12,CB,Cornerback,true,false,false
+13,S,Safety,true,false,false
+14,DB,Defensive Back,true,false,false
+15,DP,Defensive Player,true,false,false
+16,D/ST,Defense/Special Teams,true,false,false
+17,K,Kicker,true,false,false
+18,P,Punter,true,false,false
+19,HC,Head Coach,true,false,false
+20,BE,Bench,false,true,false
+21,IR,Injured Reserve,false,false,true
+23,RB/WR/TE,Flex (RB/WR/TE),true,false,false
+24,ER,Edge Rusher,true,false,false

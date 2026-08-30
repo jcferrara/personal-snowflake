@@ -1,0 +1,60 @@
+version: 2
+
+seeds:
+  - name: espn_lineup_slots
+    description: >
+      Reference lookup for ESPN fantasy lineup slot ids (the lineupSlotId on
+      every roster entry and draft pick). One row per slot id. Covers the full
+      ESPN enum, not just the slots this league uses — the active set per
+      season comes from stg_fantasy_football__league_settings.roster_settings.
+    config:
+      column_types:
+        slot_id: integer
+        slot_name: varchar
+        slot_label: varchar
+        is_starter: boolean
+        is_bench: boolean
+        is_ir: boolean
+    columns:
+      - name: slot_id
+        description: Primary key. ESPN lineupSlotId.
+        data_tests:
+          - unique
+          - not_null
+      - name: slot_name
+        description: >
+          Short ESPN slot code (e.g. "QB", "RB/WR", "BE", "IR"). Flex slots
+          use a "/"-joined list of the positions they accept.
+      - name: slot_label
+        description: Human-readable slot name for reporting.
+      - name: is_starter
+        description: >
+          True when a player in this slot counts toward the team's weekly
+          score (any real position or flex slot). False for BE and IR.
+      - name: is_bench
+        description: True only for the bench slot (BE, slot 20).
+      - name: is_ir
+        description: True only for the injured-reserve slot (IR, slot 21).
+
+  - name: espn_positions
+    description: >
+      Reference lookup for ESPN NFL player position ids (the defaultPositionId
+      on player objects in rosters and the player pool). One row per position id.
+      Scoped to the positions seen in this league's history: standard offense,
+      D/ST, plus Head Coach (HC) from the early seasons that carried a coach
+      roster slot. Add IDP rows if defensive-player scoring is ever enabled.
+    config:
+      column_types:
+        position_id: integer
+        position: varchar
+        position_label: varchar
+    columns:
+      - name: position_id
+        description: Primary key. ESPN defaultPositionId.
+        data_tests:
+          - unique
+          - not_null
+      - name: position
+        description: Short position code (QB, RB, WR, TE, K, HC, D/ST).
+      - name: position_label
+        description: Human-readable position name for reporting.
