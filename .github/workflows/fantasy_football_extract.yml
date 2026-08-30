@@ -1,0 +1,66 @@
+name: Fantasy football extract
+
+on:
+  workflow_dispatch:
+    inputs:
+      seasons:
+        description: "Space-separated seasons to (re)pull, e.g. '2015 2016'. Blank = current season only."
+        required: false
+        default: ""
+  schedule:
+    # GitHub Actions cron is UTC-only; times below are Pacific-ish. The `9-12,1`
+    # month filter covers September through the January playoffs. DST drift of an
+    # hour doesn't matter at this cadence, so no paired PST/PDT entries.
+    #
+    # In-season, 3x/week aligned to the weekly state transitions:
+    - cron: "0 13 * 9-12,1 2"   # Tue 06:00 PT — final scores/rosters after Monday Night Football
+    - cron: "0 17 * 9-12,1 3"   # Wed 10:00 PT — waiver claim results
+    - cron: "0 15 * 9-12,1 0"   # Sun 08:00 PT — locked lineups + free-agent snapshot before the 1pm ET slate
+    #
+    # Off-season heartbeat: catches stray setting changes, the late-August draft,
+    # and surfaces an expired ESPN cookie before the season starts.
+    - cron: "0 15 1 2-8 *"      # 1st of the month, Feb–Aug
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r extraction/requirements.txt
+
+      - name: Restore Snowflake private key
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$SNOWFLAKE_PRIVATE_KEY_B64" | base64 -d > "$RUNNER_TEMP/keys/snowflake_key.p8"
+          chmod 600 "$RUNNER_TEMP/keys/snowflake_key.p8"
+        env:
+          SNOWFLAKE_PRIVATE_KEY_B64: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_B64 }}
+
+      - name: Run extraction
+        working-directory: extraction
+        run: >-
+          python -m fantasy_football.main
+          ${{ github.event.inputs.seasons && format('--seasons {0}', github.event.inputs.seasons) || '' }}
+        env:
+          ESPN_LEAGUE_ID: ${{ secrets.ESPN_LEAGUE_ID }}
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          ESPN_FIRST_SEASON: ${{ secrets.ESPN_FIRST_SEASON }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          # SNOWFLAKE_SCHEMA is not passed — snowflake_writer.py fixes it to
+          # FANTASY_FOOTBALL so the Garmin-oriented shared secret can't misdirect it.
+          SNOWFLAKE_PRIVATE_KEY_PATH: ${{ runner.temp }}/keys/snowflake_key.p8
+          SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}

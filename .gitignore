@@ -9,6 +9,9 @@ logs/
 __pycache__/
 *.pyc
 
+# extraction: local API-shape dumps (fantasy_football/explore.py)
+sample_*.json
+
 # IDE
 .idea/
 .vscode/
