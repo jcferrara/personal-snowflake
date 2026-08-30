@@ -1,0 +1,475 @@
+version: 2
+
+models:
+  - name: stg_fantasy_football__league_settings
+    description: >
+      One row per season of ESPN fantasy league configuration and status.
+      Grain: league_season_id. Deeply nested config blocks (roster,
+      scoring, schedule rules) are passed through as VARIANT for
+      intermediate models to flatten.
+    columns:
+      - name: league_season_id
+        description: Primary key. The season year as a string ("{season}").
+        data_tests:
+          - unique
+          - not_null
+      - name: league_id
+        description: ESPN's numeric league id (stable across seasons).
+      - name: season_year
+        description: Season year, from seasonId.
+      - name: league_name
+        description: League display name, from settings.name.
+      - name: draft_type
+        description: Draft format, from draftSettings.type (e.g. "SNAKE", "AUCTION").
+      - name: draft_order_type
+        description: >
+          How draft order was set, from draftSettings.orderType (e.g.
+          "MANUAL", "AUTOMATIC").
+      - name: scoring_type
+        description: >
+          Player scoring ranking type, from scoringSettings.playerRankType
+          (e.g. "PPR", "STANDARD", "HALF").
+      - name: acquisition_type
+        description: >
+          Waiver/free-agent acquisition model, from
+          acquisitionSettings.acquisitionType (e.g.
+          "WAIVERS_TRADITIONAL", "WAIVERS_FAAB").
+      - name: current_scoring_period
+        description: Current scoring period (NFL week) as of extraction.
+      - name: current_matchup_period
+        description: Current matchup period as of extraction.
+      - name: first_scoring_period
+        description: First scoring period of the season, from status.
+      - name: final_scoring_period
+        description: Final scoring period of the season, from status.
+      - name: team_count
+        description: Number of teams in the league, from settings.size.
+      - name: matchup_period_count
+        description: >
+          Number of regular-season matchup periods, from
+          scheduleSettings.matchupPeriodCount.
+      - name: playoff_team_count
+        description: >
+          Number of teams that make the playoffs, from
+          scheduleSettings.playoffTeamCount.
+      - name: auction_budget
+        description: Auction draft budget, from draftSettings.auctionBudget.
+      - name: acquisition_budget
+        description: >
+          FAAB / acquisition budget, from
+          acquisitionSettings.acquisitionBudget.
+      - name: waiver_hours
+        description: Waiver hold period in hours, from acquisitionSettings.waiverHours.
+      - name: trade_veto_votes_required
+        description: >
+          Votes required to veto a trade, from
+          tradeSettings.vetoVotesRequired.
+      - name: is_active
+        description: True when the league is active, from status.isActive.
+      - name: is_expired
+        description: True when the league season has expired, from status.isExpired.
+      - name: is_full
+        description: True when every team slot is filled, from status.isFull.
+      - name: is_public
+        description: True when the league is public, from settings.isPublic.
+      - name: activated_at
+        description: When the league season was activated (status.activatedDate).
+      - name: draft_at
+        description: Scheduled draft time (draftSettings.date).
+      - name: trade_deadline_at
+        description: Trade deadline (tradeSettings.deadlineDate).
+      - name: roster_settings
+        description: >
+          Raw rosterSettings object (lineup slot counts, position limits).
+          VARIANT passthrough.
+      - name: scoring_settings
+        description: >
+          Raw scoringSettings object (per-statId point values). VARIANT
+          passthrough.
+      - name: schedule_settings
+        description: >
+          Raw scheduleSettings object (divisions, matchup periods, playoff
+          rules). VARIANT passthrough.
+      - name: league_status
+        description: Raw status object, passed through whole as VARIANT.
+      - name: extracted_at
+        description: When this row was landed into RAW.FANTASY_FOOTBALL.LEAGUE_SETTINGS.
+      - name: source_method
+        description: ESPN view(s) that produced this row ("mSettings,mTeam").
+
+  - name: stg_fantasy_football__teams
+    description: >
+      One row per fantasy team per season. Grain: team_season_id. Record,
+      transaction-counter and owners structures are passed through as
+      VARIANT alongside the commonly-used flattened fields.
+    columns:
+      - name: team_season_id
+        description: Primary key. "{season}-{team_id}".
+        data_tests:
+          - unique
+          - not_null
+      - name: team_id
+        description: ESPN team id, unique within a season.
+      - name: season_year
+        description: Season year, parsed from the natural key.
+      - name: division_id
+        description: Division this team belongs to, from divisionId.
+      - name: primary_owner_id
+        description: SWID GUID of the team's primary owner; joins to members.member_id.
+      - name: team_name
+        description: Team display name.
+      - name: team_abbrev
+        description: Short team abbreviation.
+      - name: logo_url
+        description: URL of the team logo image.
+      - name: streak_type
+        description: >
+          Current overall streak direction, from record.overall.streakType
+          (e.g. "WIN", "LOSS", "NONE").
+      - name: playoff_seed
+        description: Playoff seed (0 until seeded).
+      - name: rank_final
+        description: Final regular-season rank (0 until set).
+      - name: rank_calculated_final
+        description: Final calculated rank including playoffs (0 until set).
+      - name: current_projected_rank
+        description: ESPN's current projected finish rank.
+      - name: waiver_rank
+        description: Current waiver priority position.
+      - name: points_for
+        description: Total points scored, from points.
+      - name: points_adjusted
+        description: Points after league adjustments, from pointsAdjusted.
+      - name: points_delta
+        description: Points adjustment delta, from pointsDelta.
+      - name: wins
+        description: Overall wins, from record.overall.wins.
+      - name: losses
+        description: Overall losses, from record.overall.losses.
+      - name: ties
+        description: Overall ties, from record.overall.ties.
+      - name: win_percentage
+        description: Overall win percentage, from record.overall.percentage.
+      - name: record_points_for
+        description: Points for as tracked on the record, from record.overall.pointsFor.
+      - name: record_points_against
+        description: >
+          Points against as tracked on the record, from
+          record.overall.pointsAgainst.
+      - name: games_back
+        description: Games behind the division/league leader, from record.overall.gamesBack.
+      - name: streak_length
+        description: Length of the current streak, from record.overall.streakLength.
+      - name: acquisition_count
+        description: Total acquisitions made, from transactionCounter.acquisitions.
+      - name: drop_count
+        description: Total player drops, from transactionCounter.drops.
+      - name: trade_count
+        description: Total trades completed, from transactionCounter.trades.
+      - name: acquisition_budget_spent
+        description: >
+          FAAB / acquisition budget spent, from
+          transactionCounter.acquisitionBudgetSpent.
+      - name: move_to_active_count
+        description: Times a player was moved to active, from transactionCounter.moveToActive.
+      - name: move_to_ir_count
+        description: Times a player was moved to IR, from transactionCounter.moveToIR.
+      - name: is_active
+        description: True when the team is active, from isActive.
+      - name: is_eliminated
+        description: True when the team is eliminated from playoff contention.
+      - name: is_transaction_locked
+        description: True when transactions are currently locked for this team.
+      - name: owner_ids
+        description: Raw owners array of SWID GUIDs. VARIANT passthrough.
+      - name: record
+        description: >
+          Raw record object (overall / home / away / division splits).
+          VARIANT passthrough.
+      - name: transaction_counter
+        description: Raw transactionCounter object. VARIANT passthrough.
+      - name: extracted_at
+        description: When this row was landed into RAW.FANTASY_FOOTBALL.TEAMS.
+      - name: source_method
+        description: ESPN view(s) that produced this row ("mSettings,mTeam").
+
+  - name: stg_fantasy_football__members
+    description: >
+      One row per league member (a human account) per season. Grain:
+      member_season_id.
+    columns:
+      - name: member_season_id
+        description: Primary key. "{season}-{member_id}".
+        data_tests:
+          - unique
+          - not_null
+      - name: member_id
+        description: >
+          Member SWID GUID (in {braces}). Joins to teams.primary_owner_id
+          and to owner ids in teams.owner_ids.
+      - name: season_year
+        description: >
+          Season year. Parsed as the first token of the natural key, since
+          the member GUID itself contains hyphens.
+      - name: display_name
+        description: Member's ESPN display name.
+      - name: first_name
+        description: Member's first name.
+      - name: last_name
+        description: Member's last name.
+      - name: notification_settings
+        description: Raw notificationSettings array. VARIANT passthrough.
+      - name: extracted_at
+        description: When this row was landed into RAW.FANTASY_FOOTBALL.MEMBERS.
+      - name: source_method
+        description: ESPN view(s) that produced this row ("mSettings,mTeam").
+
+  - name: stg_fantasy_football__draft_picks
+    description: >
+      One row per draft pick. Grain: draft_pick_id (season + overall pick
+      number).
+    columns:
+      - name: draft_pick_id
+        description: Primary key. "{season}-{overall_pick}".
+        data_tests:
+          - unique
+          - not_null
+      - name: season_year
+        description: Season year, parsed from the natural key.
+      - name: team_id
+        description: Team that made the pick, from teamId.
+      - name: player_id
+        description: >
+          ESPN player id selected. -1 for picks not yet made (future /
+          keeper-reserved slots).
+      - name: nominating_team_id
+        description: Team that nominated the player (auction drafts), from nominatingTeamId.
+      - name: lineup_slot_id
+        description: Lineup slot the pick was drafted into, from lineupSlotId.
+      - name: pick_number
+        description: ESPN's pick id, from id (equals overall_pick_number).
+      - name: overall_pick_number
+        description: Overall pick number across the whole draft.
+      - name: round_id
+        description: Round number, from roundId.
+      - name: round_pick_number
+        description: Pick number within the round, from roundPickNumber.
+      - name: bid_amount
+        description: Winning bid amount for auction drafts (0 for snake), from bidAmount.
+      - name: auto_draft_type_id
+        description: Auto-draft type code, from autoDraftTypeId (0 = manual pick).
+      - name: is_keeper
+        description: True when the pick is a keeper, from keeper.
+      - name: is_reserved_for_keeper
+        description: True when the slot is reserved for a keeper, from reservedForKeeper.
+      - name: is_trade_locked
+        description: True when the pick cannot be traded, from tradeLocked.
+      - name: extracted_at
+        description: When this row was landed into RAW.FANTASY_FOOTBALL.DRAFT_PICKS.
+      - name: source_method
+        description: ESPN view that produced this row ("mDraftDetail").
+
+  - name: stg_fantasy_football__transactions
+    description: >
+      One row per add / drop / trade / waiver transaction. Grain:
+      transaction_id (season + ESPN transaction id). Per-player line items
+      are passed through as VARIANT in items for an intermediate model to
+      explode.
+    columns:
+      - name: transaction_id
+        description: Primary key. "{season}-{espn_transaction_id}".
+        data_tests:
+          - unique
+          - not_null
+      - name: season_year
+        description: Season year, parsed from the natural key.
+      - name: espn_transaction_id
+        description: ESPN's globally-unique transaction id, from id.
+      - name: team_id
+        description: Team that initiated the transaction, from teamId.
+      - name: member_id
+        description: SWID GUID of the member who initiated it, from memberId.
+      - name: related_transaction_id
+        description: >
+          Linked transaction id (e.g. the drop paired with an add), from
+          relatedTransactionId.
+      - name: transaction_type
+        description: >
+          Transaction type, from type (e.g. "WAIVER", "FREEAGENT",
+          "TRADE_ACCEPT", "ROSTER").
+      - name: status
+        description: Transaction status, from status (e.g. "EXECUTED", "PENDING", "FAILED").
+      - name: execution_type
+        description: >
+          How the transaction was executed, from executionType (e.g.
+          "PROCESS", "EXECUTE").
+      - name: scoring_period_id
+        description: Scoring period (NFL week) the transaction applied to.
+      - name: bid_amount
+        description: FAAB bid amount for waiver claims, from bidAmount.
+      - name: sub_order
+        description: Ordering within a batch of transactions, from subOrder.
+      - name: is_pending
+        description: True when the transaction is still pending, from isPending.
+      - name: is_acting_as_team_owner
+        description: >
+          True when the initiator acted as the team owner (vs. league
+          manager), from isActingAsTeamOwner.
+      - name: is_league_manager
+        description: True when a league manager processed the transaction, from isLeagueManager.
+      - name: proposed_at
+        description: When the transaction was proposed (proposedDate).
+      - name: processed_at
+        description: When the transaction was processed (processDate).
+      - name: items
+        description: >
+          Raw items array — one entry per player movement
+          ({playerId, type, fromTeamId, toTeamId, fromLineupSlotId,
+          toLineupSlotId}). VARIANT passthrough, flattened downstream.
+      - name: extracted_at
+        description: When this row was landed into RAW.FANTASY_FOOTBALL.TRANSACTIONS.
+      - name: source_method
+        description: ESPN view that produced this row ("mTransactions2").
+
+  - name: stg_fantasy_football__matchups
+    description: >
+      One row per matchup per week. Grain: matchup_id
+      (season + week + matchup id). The nested per-player boxscore rosters
+      for both sides are passed through as VARIANT (home_roster /
+      away_roster) for an intermediate model to flatten to per-player rows.
+    columns:
+      - name: matchup_id
+        description: Primary key. "{season}-{week}-{matchup_id}".
+        data_tests:
+          - unique
+          - not_null
+      - name: season_year
+        description: Season year, parsed from the natural key.
+      - name: week
+        description: Scoring period / NFL week, parsed from the natural key.
+      - name: espn_matchup_id
+        description: ESPN's matchup id within the season schedule, from id.
+      - name: home_team_id
+        description: Home side team id, from home.teamId.
+      - name: away_team_id
+        description: Away side team id, from away.teamId.
+      - name: winner
+        description: >
+          Matchup result, from winner ("HOME", "AWAY", "TIE",
+          "UNDECIDED").
+      - name: playoff_tier_type
+        description: >
+          Playoff bracket tier, from playoffTierType ("NONE" for
+          regular-season matchups, e.g. "WINNERS_BRACKET",
+          "LOSERS_CONSOLATION_LADDER").
+      - name: matchup_period_id
+        description: Matchup period this game belongs to, from matchupPeriodId.
+      - name: home_points
+        description: Home side total points, from home.totalPoints.
+      - name: away_points
+        description: Away side total points, from away.totalPoints.
+      - name: home_tiebreak
+        description: Home side tiebreak points, from home.tiebreak.
+      - name: away_tiebreak
+        description: Away side tiebreak points, from away.tiebreak.
+      - name: home_adjustment
+        description: Home side manual score adjustment, from home.adjustment.
+      - name: away_adjustment
+        description: Away side manual score adjustment, from away.adjustment.
+      - name: is_complete
+        description: >
+          True when winner is decided (HOME / AWAY / TIE); false while
+          UNDECIDED.
+      - name: is_playoff
+        description: True when playoff_tier_type is anything other than "NONE".
+      - name: home_roster
+        description: >
+          Raw home object including the full nested per-player boxscore
+          roster (rosterForCurrentScoringPeriod / rosterForMatchupPeriod
+          with per-player stats). VARIANT passthrough.
+      - name: away_roster
+        description: Raw away object, structured like home_roster. VARIANT passthrough.
+      - name: extracted_at
+        description: When this row was landed into RAW.FANTASY_FOOTBALL.MATCHUPS.
+      - name: source_method
+        description: ESPN views that produced this row ("mMatchupScore,mBoxscore").
+
+  - name: stg_fantasy_football__free_agents
+    description: >
+      One row per unrostered player per point-in-time snapshot. Grain:
+      free_agent_snapshot_id (season + week + player id). Forward-only:
+      ESPN exposes no historical free-agent pool. Player stat arrays and
+      ratings are passed through as VARIANT.
+    columns:
+      - name: free_agent_snapshot_id
+        description: Primary key. "{season}-{week}-{player_id}".
+        data_tests:
+          - unique
+          - not_null
+      - name: season_year
+        description: Season year, parsed from the natural key.
+      - name: week
+        description: Scoring period / NFL week of the snapshot, parsed from the natural key.
+      - name: player_id
+        description: ESPN player id, from id.
+      - name: pro_team_id
+        description: Player's NFL team id, from player.proTeamId.
+      - name: default_position_id
+        description: Player's default position id, from player.defaultPositionId.
+      - name: on_team_id
+        description: >
+          Fantasy team id the player is on; 0 or null means unrostered.
+          The collector only lands unrostered players, so this is 0/null
+          for every row.
+      - name: player_full_name
+        description: Player's full name, from player.fullName.
+      - name: first_name
+        description: Player's first name, from player.firstName.
+      - name: last_name
+        description: Player's last name, from player.lastName.
+      - name: injury_status
+        description: >
+          Injury designation, from player.injuryStatus (e.g. "ACTIVE",
+          "QUESTIONABLE", "OUT", "INJURY_RESERVE").
+      - name: availability_status
+        description: >
+          Roster availability, from status (e.g. "FREEAGENT",
+          "WAIVERS").
+      - name: percent_owned
+        description: Percent of ESPN leagues the player is rostered in, from ownership.percentOwned.
+      - name: percent_owned_change
+        description: Recent change in percent owned, from ownership.percentChange.
+      - name: percent_started
+        description: Percent of leagues starting the player, from ownership.percentStarted.
+      - name: average_draft_position
+        description: Average draft position across ESPN leagues, from ownership.averageDraftPosition.
+      - name: auction_value_average
+        description: Average auction draft value, from ownership.auctionValueAverage.
+      - name: keeper_value
+        description: Keeper value assigned by ESPN, from keeperValue.
+      - name: is_injured
+        description: True when the player is flagged injured, from player.injured.
+      - name: is_active
+        description: True when the player is an active NFL player, from player.active.
+      - name: is_droppable
+        description: True when the player may be dropped, from player.droppable.
+      - name: is_lineup_locked
+        description: True when the player's lineup slot is locked, from lineupLocked.
+      - name: is_roster_locked
+        description: True when the player cannot be added/dropped, from rosterLocked.
+      - name: is_trade_locked
+        description: True when the player cannot be traded, from tradeLocked.
+      - name: waiver_process_at
+        description: When the player clears waivers (waiverProcessDate).
+      - name: eligible_slots
+        description: Raw eligibleSlots array of lineup slot ids. VARIANT passthrough.
+      - name: player_stats
+        description: >
+          Raw player.stats array (per scoring-period actual and projected
+          stat splits). VARIANT passthrough.
+      - name: ratings
+        description: Raw ratings object (ESPN's positional / total ratings). VARIANT passthrough.
+      - name: extracted_at
+        description: When this row was landed into RAW.FANTASY_FOOTBALL.FREE_AGENTS.
+      - name: source_method
+        description: ESPN view that produced this row ("kona_player_info").

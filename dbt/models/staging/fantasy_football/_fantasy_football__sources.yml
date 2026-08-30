@@ -1,0 +1,57 @@
+version: 2
+
+sources:
+  - name: fantasy_football
+    database: RAW
+    schema: FANTASY_FOOTBALL
+    description: >
+      One ESPN fantasy football league, pulled straight from ESPN's
+      undocumented fantasy v3 API and landed as semi-structured JSON by
+      extraction/fantasy_football/. Every table shares the same four-column
+      shape: NATURAL_KEY, RAW_DATA (VARIANT), EXTRACTED_AT, SOURCE_METHOD.
+      NATURAL_KEY always encodes the grain (season, plus week / id where
+      relevant) and writes MERGE on it. See
+      extraction/fantasy_football/collectors.py and
+      extraction/fantasy_football/snowflake_writer.py.
+    tables:
+      - name: league_settings
+        description: >
+          One row per season, keyed by "{season}", holding the top-level
+          league id/status/settings block (draft, roster, scoring,
+          schedule, acquisition, trade and finance settings). Landed from
+          the mSettings,mTeam views.
+      - name: teams
+        description: >
+          One row per team per season, keyed by "{season}-{team_id}",
+          holding the raw ESPN team dict (record, ranks, points,
+          transaction counters). Landed from the mSettings,mTeam views.
+      - name: members
+        description: >
+          One row per league member (human) per season, keyed by
+          "{season}-{member_id}" where member_id is the member's SWID GUID.
+          Landed from the mSettings,mTeam views.
+      - name: draft_picks
+        description: >
+          One row per draft pick, keyed by "{season}-{overall_pick}",
+          holding the raw ESPN pick dict. Landed from the mDraftDetail
+          view.
+      - name: transactions
+        description: >
+          One row per add/drop/trade/waiver transaction, keyed by
+          "{season}-{transaction_id}". Collected per scoring period
+          (mTransactions2 returns nothing without a scoringPeriodId); the
+          MERGE dedupes any week overlap since ESPN transaction ids are
+          globally unique. Landed from the mTransactions2 view.
+      - name: matchups
+        description: >
+          One row per matchup per week, keyed by
+          "{season}-{week}-{matchup_id}". Payload is ESPN's raw schedule
+          entry, carrying the full nested per-player boxscore roster for
+          both sides. Landed from the mMatchupScore,mBoxscore views.
+      - name: free_agents
+        description: >
+          Point-in-time snapshots of the unrostered player pool, one row
+          per player per snapshot, keyed by
+          "{season}-{week}-{player_id}". Forward-only — ESPN exposes no
+          historical free-agent pool. Landed from the kona_player_info
+          view.
