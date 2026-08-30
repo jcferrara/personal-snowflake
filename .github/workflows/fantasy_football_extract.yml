@@ -47,10 +47,16 @@ jobs:
 
       - name: Run extraction
         working-directory: extraction
-        run: >-
-          python -m fantasy_football.main
-          ${{ github.event.inputs.seasons && format('--seasons {0}', github.event.inputs.seasons) || '' }}
+        run: |
+          args=()
+          if [ -n "$SEASONS" ]; then
+            args=(--seasons $SEASONS)
+          fi
+          python -m fantasy_football.main "${args[@]}"
         env:
+          # Passed as data, never spliced into the run: string — main.py casts
+          # --seasons to int, so a non-numeric value fails fast.
+          SEASONS: ${{ github.event.inputs.seasons }}
           ESPN_LEAGUE_ID: ${{ secrets.ESPN_LEAGUE_ID }}
           ESPN_S2: ${{ secrets.ESPN_S2 }}
           ESPN_SWID: ${{ secrets.ESPN_SWID }}
