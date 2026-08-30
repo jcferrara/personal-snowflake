@@ -1,0 +1,263 @@
+version: 2
+
+models:
+  - name: dim_fantasy_football_managers
+    description: >
+      One row per league member (a person), collapsed across every season
+      they've played. Grain: manager_id. The manager is the stable entity
+      in this league — team ids are only unique within a season — so every
+      cross-season effectiveness rollup keys on this.
+    columns:
+      - name: manager_id
+        description: >
+          Primary key. The member's ESPN SWID GUID (in {braces}). Matches
+          dim_fantasy_football_teams.manager_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: display_name
+        description: >
+          Member's ESPN display name, taken from their most recent season
+          (display names change over time).
+      - name: first_name
+        description: Member's first name, from their most recent season.
+      - name: last_name
+        description: Member's last name, from their most recent season.
+      - name: full_name
+        description: >
+          first_name + last_name, from the most recent season. NULL when
+          both name parts are blank.
+      - name: first_season
+        description: Earliest season the member appears in the league.
+      - name: last_season
+        description: Most recent season the member appears in the league.
+      - name: seasons_played
+        description: Count of distinct seasons the member has been in the league.
+      - name: is_active
+        description: >
+          True when last_season equals the latest season present in the
+          data — i.e. the member is in the current league.
+      - name: seasons_active
+        description: Sorted array of every season_year the member played.
+
+  - name: dim_fantasy_football_teams
+    description: >
+      One row per team per season. Grain: team_season_id. ESPN team ids
+      repeat across seasons, so the team-season is the entity here; it
+      carries the owning manager, division, and the season's final record
+      and standing. Facts at team-week grain join here for team and
+      manager context.
+    columns:
+      - name: team_season_id
+        description: Primary key. "{season}-{team_id}".
+        data_tests:
+          - unique
+          - not_null
+      - name: team_id
+        description: ESPN team id. Unique only within a season.
+      - name: season_year
+        description: Season this team-season belongs to.
+      - name: manager_id
+        description: >
+          FK to dim_fantasy_football_managers. The team's primary owner
+          (primaryOwner SWID); co-owners are not modelled here.
+      - name: division_id
+        description: Division id this team was in that season.
+      - name: team_name
+        description: Team display name that season.
+      - name: team_abbrev
+        description: Short team abbreviation that season.
+      - name: logo_url
+        description: URL of the team logo image.
+      - name: manager_display_name
+        description: >
+          The owning member's display name in this specific season (joined
+          on member + season), so it reflects the name in use at the time.
+      - name: division_name
+        description: >
+          Division name that season, from the league's schedule settings
+          divisions array.
+      - name: streak_type
+        description: >
+          Direction of the team's end-of-season overall streak ("WIN",
+          "LOSS", "NONE").
+      - name: wins
+        description: Regular-season overall wins (record.overall.wins).
+      - name: losses
+        description: Regular-season overall losses.
+      - name: ties
+        description: Regular-season overall ties (this league has a no-tie rule).
+      - name: win_percentage
+        description: Overall win percentage (record.overall.percentage).
+      - name: points_for
+        description: >
+          Season points-for from the team's top-level points field. May be
+          0 for some seasons where only record_points_for is populated —
+          prefer record_points_for, or sum fct_..._matchup scores.
+      - name: record_points_for
+        description: Season points-for from record.overall.pointsFor.
+      - name: points_against
+        description: Season points-against from record.overall.pointsAgainst.
+      - name: points_adjusted
+        description: Season points after league adjustments (pointsAdjusted).
+      - name: games_back
+        description: Games behind the leader at season end (record.overall.gamesBack).
+      - name: streak_length
+        description: Length of the end-of-season streak.
+      - name: playoff_seed
+        description: >
+          Final seed (1..team_count). 0 before the league seeds the
+          bracket (e.g. the in-progress current season).
+      - name: final_rank
+        description: >
+          Final overall standing, 1 = champion (ESPN rankCalculatedFinal).
+          0 until the season concludes.
+      - name: acquisition_count
+        description: Total acquisitions made that season.
+      - name: drop_count
+        description: Total player drops that season.
+      - name: trade_count
+        description: Total trades completed that season.
+      - name: acquisition_budget_spent
+        description: FAAB / acquisition budget spent that season.
+      - name: move_to_active_count
+        description: Times a player was moved to the active roster.
+      - name: move_to_ir_count
+        description: Times a player was moved to IR.
+      - name: waiver_rank
+        description: Waiver priority position at season end.
+      - name: is_active
+        description: True when the team was active that season (ESPN isActive).
+      - name: is_eliminated
+        description: True when the team was eliminated from playoff contention.
+      - name: made_playoffs
+        description: >
+          True when playoff_seed is between 1 and the season's
+          playoff_team_count. False for the unseeded current season.
+      - name: is_champion
+        description: True when final_rank = 1.
+      - name: is_last_place
+        description: True when final_rank equals the season's team_count.
+
+  - name: dim_fantasy_football_seasons
+    description: >
+      One row per season of the league, with the settings that define how
+      that season played: draft, scoring, roster construction, playoff
+      format, and key dates. Grain: season_id. Context dimension for facts
+      at any grain within a season; use it to compare across rule changes
+      (e.g. the 2022 flex change, team_count growth).
+    columns:
+      - name: season_id
+        description: Primary key. The season year as a string ("2024").
+        data_tests:
+          - unique
+          - not_null
+      - name: season_year
+        description: Season year as an integer.
+      - name: league_id
+        description: ESPN's numeric league id (stable across seasons).
+      - name: league_name
+        description: League display name that season.
+      - name: draft_type
+        description: Draft format that season ("SNAKE", "AUCTION").
+      - name: draft_order_type
+        description: How draft order was set ("MANUAL", "AUTOMATIC").
+      - name: scoring_type
+        description: Player scoring ranking type ("PPR", "STANDARD", "HALF").
+      - name: acquisition_type
+        description: >
+          Waiver / free-agent acquisition model ("WAIVERS_TRADITIONAL",
+          "WAIVERS_FAAB").
+      - name: starting_lineup
+        description: >
+          One-line roster construction summary for the season, e.g.
+          "QB, 2xRB, 2xWR, WR/TE, TE, D/ST, K, RB/WR/TE", ordered by slot
+          id. Built from int_fantasy_football_lineup_slots.
+      - name: team_count
+        description: Number of teams in the league that season.
+      - name: playoff_team_count
+        description: Number of teams that made the playoffs.
+      - name: regular_season_weeks
+        description: Regular-season matchup periods (scheduleSettings.matchupPeriodCount).
+      - name: first_scoring_period
+        description: First scoring period (NFL week) of the season.
+      - name: final_scoring_period
+        description: Final scoring period of the season.
+      - name: starting_slot_count
+        description: >
+          Total players a legal starting lineup fields that season (sum of
+          the per-slot required counts).
+      - name: auction_budget
+        description: Auction draft budget (0 for snake seasons).
+      - name: acquisition_budget
+        description: FAAB / acquisition budget for the season.
+      - name: waiver_hours
+        description: Waiver hold period in hours.
+      - name: trade_veto_votes_required
+        description: Votes required to veto a trade.
+      - name: is_active
+        description: True when the league season is active (ESPN status.isActive).
+      - name: is_current_season
+        description: >
+          True for the latest season present in the data (the in-progress
+          season).
+      - name: is_auction_draft
+        description: True when draft_type = 'AUCTION'.
+      - name: is_ppr
+        description: True when scoring_type = 'PPR'.
+      - name: activated_at
+        description: When the league season was activated.
+      - name: draft_at
+        description: Scheduled draft time.
+      - name: trade_deadline_at
+        description: Trade deadline for the season.
+
+  - name: dim_fantasy_football_players
+    description: >
+      One row per NFL player (and team defense) ever seen in this league,
+      on a matchup roster or in a free-agent snapshot. Grain: player_id.
+      Identity fields are the player's most recent observation; the season
+      span covers every season they appear. Team defenses have a negative
+      player_id.
+    columns:
+      - name: player_id
+        description: >
+          Primary key. ESPN player id. Negative for non-person entities —
+          team defenses (D/ST) and, in the 2019-2021 seasons, head
+          coaches. Matches int_fantasy_football_matchup_rosters.player_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: player_position_id
+        description: >
+          ESPN defaultPositionId from the most recent observation. FK to
+          the espn_positions seed.
+      - name: pro_team_id
+        description: NFL team id from the most recent observation (ESPN proTeamId).
+      - name: player_full_name
+        description: Player display name, most recent observation.
+      - name: player_first_name
+        description: Player first name, most recent observation.
+      - name: player_last_name
+        description: Player last name, most recent observation.
+      - name: player_position
+        description: >
+          Short position code (QB, RB, WR, TE, K, HC, D/ST) for
+          player_position_id, most recent observation.
+      - name: first_seen_season
+        description: Earliest season the player appears in this league's data.
+      - name: last_seen_season
+        description: Most recent season the player appears in this league's data.
+      - name: seasons_seen
+        description: Count of distinct seasons the player appears.
+      - name: is_team_defense
+        description: True when player_position = 'D/ST' (a team defense, not a person).
+      - name: is_head_coach
+        description: >
+          True when player_position = 'HC' — the head-coach roster entity
+          from the 2019-2021 seasons, not a person.
+      - name: is_active
+        description: >
+          True when last_seen_season equals the latest season present in
+          the data. A rough "still relevant" flag, not an NFL roster
+          status.
