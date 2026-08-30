@@ -6,7 +6,7 @@ with
     import_models(
         refs = [
             ref('int_fantasy_football_matchup_rosters'),
-            ref('stg_fantasy_football__free_agents')
+            ref('stg_fantasy_football__player_pool')
         ],
         ctes = ['matchup_rosters', 'player_pool']
     )
@@ -41,7 +41,7 @@ rostered as (
 pool_points as (
 
     select
-        player_pool.free_agent_snapshot_id,
+        player_pool.player_pool_snapshot_id,
         max(case when stat.value:statSourceId::int = 0
             then stat.value:appliedTotal::float end) as actual_points,
         max(case when stat.value:statSourceId::int = 1
@@ -80,15 +80,15 @@ pool as (
         pool_points.projected_points
     from player_pool
     left join pool_points
-        on player_pool.free_agent_snapshot_id
-            = pool_points.free_agent_snapshot_id
+        on player_pool.player_pool_snapshot_id
+            = pool_points.player_pool_snapshot_id
 
 ),
 
 /* Spine: every (player, season, week) seen on a roster or in a pool
-   snapshot. A rostered player appears in both once the pool snapshot
-   stops filtering to free agents; before that, rostered players in past
-   seasons have no pool row and so carry NULL market features. */
+   snapshot. A rostered player normally appears in both; past seasons
+   (before the pool snapshot captured rostered players) have no pool row
+   for rostered players, so those carry NULL market features. */
 spine as (
 
     select player_id, season_year, week from rostered

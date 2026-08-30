@@ -215,7 +215,8 @@ models:
   - name: dim_fantasy_football_players
     description: >
       One row per NFL player (and team defense) ever seen in this league,
-      on a matchup roster or in a free-agent snapshot. Grain: player_id.
+      on a matchup roster or in the weekly player-pool snapshot. Grain:
+      player_id.
       Identity fields are the player's most recent observation; the season
       span covers every season they appear. Team defenses have a negative
       player_id.

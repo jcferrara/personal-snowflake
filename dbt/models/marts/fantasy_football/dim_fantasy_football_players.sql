@@ -4,15 +4,15 @@ with
     import_models(
         refs = [
             ref('int_fantasy_football_matchup_rosters'),
-            ref('stg_fantasy_football__free_agents'),
+            ref('stg_fantasy_football__player_pool'),
             ref('espn_positions')
         ],
-        ctes = ['matchup_rosters', 'free_agents', 'positions']
+        ctes = ['matchup_rosters', 'player_pool', 'positions']
     )
 }},
 
 /* Player identity shows up in two places — on matchup rosters (rostered
-   players) and in free-agent snapshots (unrostered). Union both into a
+   players) and in the weekly player-pool snapshot. Union both into a
    stream of dated observations, so we can take each player's most recent
    name / position / NFL team and the span of seasons they appear in. */
 roster_observations as (
@@ -31,21 +31,21 @@ roster_observations as (
 
 ),
 
-free_agent_observations as (
+player_pool_observations as (
 
     select
-        free_agents.player_id,
-        free_agents.season_year,
-        free_agents.week,
-        free_agents.player_full_name,
-        free_agents.first_name as player_first_name,
-        free_agents.last_name as player_last_name,
-        free_agents.default_position_id as player_position_id,
+        player_pool.player_id,
+        player_pool.season_year,
+        player_pool.week,
+        player_pool.player_full_name,
+        player_pool.first_name as player_first_name,
+        player_pool.last_name as player_last_name,
+        player_pool.default_position_id as player_position_id,
         positions.position as player_position,
-        free_agents.pro_team_id
-    from free_agents
+        player_pool.pro_team_id
+    from player_pool
     left join positions
-        on free_agents.default_position_id = positions.position_id
+        on player_pool.default_position_id = positions.position_id
 
 ),
 
@@ -53,7 +53,7 @@ observations as (
 
     select * from roster_observations
     union all
-    select * from free_agent_observations
+    select * from player_pool_observations
 
 ),
 

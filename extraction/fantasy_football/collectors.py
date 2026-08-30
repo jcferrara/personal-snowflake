@@ -107,15 +107,15 @@ def matchups(config: ESPNConfig, season: int, week: int) -> list[TableRows]:
     return [("MATCHUPS", rows)]
 
 
-def free_agents(config: ESPNConfig, season: int, week: int, limit: int = 3000) -> list[TableRows]:
-    """FREE_AGENTS — a point-in-time snapshot of the whole fantasy player pool.
+def player_pool(config: ESPNConfig, season: int, week: int, limit: int = 3000) -> list[TableRows]:
+    """PLAYER_POOL — a point-in-time snapshot of the whole fantasy player pool.
 
-    Despite the table name this lands *every* player ESPN surfaces for the
-    week, rostered or not — ``onTeamId`` is kept on each row so staging can
-    split free agents from rostered players. Capturing ownership %, ESPN
-    projections, ratings and injury status for rostered players too is what
-    makes a uniform per-player-per-week feature row possible downstream
-    (see int_fantasy_football_player_weeks).
+    Lands *every* player ESPN surfaces for the week, rostered or not —
+    ``onTeamId`` is kept on each row so staging can split free agents from
+    rostered players. Capturing ownership %, ESPN projections, ratings and
+    injury status for rostered players too is what makes a uniform
+    per-player-per-week feature row possible downstream (see
+    int_fantasy_football_player_weeks).
 
     Forward-only: ESPN doesn't expose historical pools, so this is never
     backfilled, only collected going forward. Over-fetches (the
@@ -147,7 +147,7 @@ def free_agents(config: ESPNConfig, season: int, week: int, limit: int = 3000) -
     ]
     rostered = sum(1 for p in players if p.get("onTeamId"))
     log.info(
-        "free_agents: %d players fetched (%d rostered, %d free agents)",
+        "player_pool: %d players fetched (%d rostered, %d free agents)",
         len(players), rostered, len(players) - rostered,
     )
-    return [("FREE_AGENTS", rows)]
+    return [("PLAYER_POOL", rows)]

@@ -37,7 +37,7 @@ WEEK_COLLECTORS = {
     "transactions": collectors.transactions,  # mTransactions2 is per-scoring-period
 }
 SNAPSHOT_COLLECTORS = {
-    "free_agents": collectors.free_agents,
+    "player_pool": collectors.player_pool,
 }
 ALL_NAMES = list(SEASON_COLLECTORS) + list(WEEK_COLLECTORS) + list(SNAPSHOT_COLLECTORS)
 
@@ -151,7 +151,7 @@ def main() -> None:
         for season in seasons:
             season_names = set(names)
             if season < current_year:
-                season_names.discard("free_agents")  # can't backfill a free-agent pool
+                season_names.discard("player_pool")  # can't backfill a player pool
             run_season(conn, config, season, season_names, week_override, current_year)
     finally:
         conn.close()

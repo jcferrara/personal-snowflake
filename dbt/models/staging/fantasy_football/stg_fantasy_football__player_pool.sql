@@ -1,16 +1,16 @@
 with source as (
-    select * from {{ source('fantasy_football', 'free_agents') }}
+    select * from {{ source('fantasy_football', 'player_pool') }}
 ),
 renamed as (
     select
         -- ids
-        natural_key as free_agent_snapshot_id,
+        natural_key as player_pool_snapshot_id,
         split_part(natural_key, '-', 1)::int as season_year,
         split_part(natural_key, '-', 2)::int as week,
         raw_data:id::int as player_id,
         raw_data:player.proTeamId::int as pro_team_id,
         raw_data:player.defaultPositionId::int as default_position_id,
-        -- 0 / null == unrostered; the collector only lands unrostered players.
+        -- rostered on this fantasy team; 0 / null == free agent or waivers.
         raw_data:onTeamId::int as on_team_id,
         -- strings
         raw_data:player.fullName::string as player_full_name,

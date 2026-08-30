@@ -123,8 +123,8 @@ models:
       - name: player_id
         description: >
           ESPN player id. Negative for team defenses (D/ST). Joins to
-          stg_fantasy_football__draft_picks.player_id and to free-agent
-          and future player dimensions.
+          stg_fantasy_football__draft_picks.player_id, the player-pool
+          snapshot, and dim_fantasy_football_players.
       - name: lineup_slot_id
         description: >
           ESPN lineupSlotId this player occupied for the matchup. FK to
@@ -287,16 +287,16 @@ models:
     description: >
       One row per player per season-week, unioning the rostered players
       (from int_fantasy_football_matchup_rosters) with the weekly
-      player-pool snapshot (stg_fantasy_football__free_agents). Grain:
+      player-pool snapshot (stg_fantasy_football__player_pool). Grain:
       player_id x season_year x week.
 
       The point-in-time feature spine for player-value modelling: the
       realized outcome (actual_points) alongside what was knowable when the
       snapshot was taken — ESPN's projection, ownership and start rates,
       ADP / auction value, injury status, ratings. Rostered rows also carry
-      how the player was used that week. Until the pool snapshot stops
-      filtering to free agents, rostered players in past seasons have NULL
-      market features (percent_owned etc.); their actual_points and roster
+      how the player was used that week. Past seasons (before the pool
+      snapshot captured rostered players) have NULL market features
+      (percent_owned etc.) on rostered rows; their actual_points and roster
       usage are still populated from the boxscore.
     columns:
       - name: sk

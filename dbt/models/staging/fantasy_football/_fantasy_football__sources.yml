@@ -48,10 +48,10 @@ sources:
           "{season}-{week}-{matchup_id}". Payload is ESPN's raw schedule
           entry, carrying the full nested per-player boxscore roster for
           both sides. Landed from the mMatchupScore,mBoxscore views.
-      - name: free_agents
+      - name: player_pool
         description: >
-          Point-in-time snapshots of the unrostered player pool, one row
-          per player per snapshot, keyed by
-          "{season}-{week}-{player_id}". Forward-only — ESPN exposes no
-          historical free-agent pool. Landed from the kona_player_info
-          view.
+          Weekly point-in-time snapshots of the whole fantasy player pool
+          — rostered players and free agents alike, one row per player per
+          snapshot, keyed by "{season}-{week}-{player_id}". Use onTeamId to
+          split them. Forward-only — ESPN exposes no historical pool.
+          Landed from the kona_player_info view.

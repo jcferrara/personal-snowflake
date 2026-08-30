@@ -39,7 +39,7 @@ seeds:
   - name: espn_positions
     description: >
       Reference lookup for ESPN NFL player position ids (the defaultPositionId
-      on player objects in rosters and free agents). One row per position id.
+      on player objects in rosters and the player pool). One row per position id.
       Scoped to the positions seen in this league's history: standard offense,
       D/ST, plus Head Coach (HC) from the early seasons that carried a coach
       roster slot. Add IDP rows if defensive-player scoring is ever enabled.

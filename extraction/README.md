@@ -153,13 +153,13 @@ undocumented) fantasy v3 API — no third-party wrapper — and lands it in
 | `DRAFT_PICKS` | `{season}-{overall_pick}` | `mDraftDetail` |
 | `TRANSACTIONS` | `{season}-{transaction_id}` | `mTransactions2` |
 | `MATCHUPS` | `{season}-{week}-{matchup_id}` | `mMatchupScore,mBoxscore` |
-| `FREE_AGENTS` | `{season}-{week}-{player_id}` | `kona_player_info` |
+| `PLAYER_POOL` | `{season}-{week}-{player_id}` | `kona_player_info` |
 
 `MATCHUPS` payloads carry the full nested per-player boxscore roster for both
-sides — flatten it in dbt, not here. `FREE_AGENTS`, despite the name, is a
-weekly snapshot of the **whole** player pool — rostered players included, with
-`onTeamId` on each row so dbt can split them — so ownership %, projections and
-ratings land for every player, not just the waiver wire. Because every table shares the raw
+sides — flatten it in dbt, not here. `PLAYER_POOL` is a weekly snapshot of the
+**whole** player pool — rostered players included, with `onTeamId` on each row
+so dbt can split them — so ownership %, projections and ratings land for every
+player, not just the waiver wire. Because every table shares the raw
 four-column shape, the `RAW_DATA:` / `RAW_DATA::` VARIANT path syntax is how
 dbt staging reads it (same as `RAW.GARMIN`).
 
@@ -183,7 +183,7 @@ dbt staging reads it (same as `RAW.GARMIN`).
 ```
 cd extraction
 python -m fantasy_football.explore            # dump sample_*.json — inspect the real shape first
-python -m fantasy_football.main               # current season, weeks 1..current + a free-agent snapshot
+python -m fantasy_football.main               # current season, weeks 1..current + a player-pool snapshot
 python -m fantasy_football.main --backfill    # every season since ESPN_FIRST_SEASON
 python -m fantasy_football.main --seasons 2022 2023
 python -m fantasy_football.main --only draft,transactions
@@ -195,7 +195,7 @@ safe and never duplicates. There's no watermark table: the current season is
 cheap to re-pull in full, and past seasons are immutable. If one collector
 errors mid-run, the rest of that season still runs.
 
-**By design:** `FREE_AGENTS` is a snapshot of the pool *right now* — ESPN
+**By design:** `PLAYER_POOL` is a snapshot of the pool *right now* — ESPN
 exposes no historical pool, so it's forward-only and skipped for any season
 before the current one (including during `--backfill`). Runs 3x/week overwrite
 that week's rows, so one snapshot per week is retained (the last run). Pre-2018 seasons use a
