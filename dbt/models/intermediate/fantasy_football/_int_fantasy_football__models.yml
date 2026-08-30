@@ -1,6 +1,78 @@
 version: 2
 
 models:
+  - name: int_fantasy_football_matchup_team_scores
+    description: >
+      Each matchup unpivoted to one row per team (home and away sides split
+      apart), so the grain is team-week. Grain: matchup_id x team_id.
+
+      Straight re-grain of stg_fantasy_football__matchups — points, tiebreak
+      and adjustment are passed through unchanged, result (W/L/T) is derived
+      from the recorded winner and the side, and margin is this team's
+      points minus the opponent's. Playoff-bye team-weeks appear once with
+      no opponent (is_bye); the empty away side of a bye matchup is dropped.
+      The scoring backbone for standings and manager-week facts.
+    columns:
+      - name: sk
+        description: Surrogate key (matchup_id, team_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: matchup_id
+        description: FK to stg_fantasy_football__matchups.matchup_id.
+      - name: season_year
+        description: Season year, carried from the matchup.
+      - name: week
+        description: Scoring period / NFL week, from the matchup natural key.
+      - name: matchup_period_id
+        description: >
+          ESPN matchupPeriodId. Equals week in the regular season; can
+          differ in multi-week playoff rounds.
+      - name: team_id
+        description: >
+          ESPN team id of this side (unique within a season). FK to
+          stg_fantasy_football__teams.
+      - name: opponent_team_id
+        description: >
+          ESPN team id of the other side. NULL for playoff-bye team-weeks.
+      - name: result
+        description: >
+          'W', 'L', or 'T' from this team's perspective, derived from the
+          matchup winner and which side this row is. NULL while the matchup
+          is not yet complete (and for byes).
+      - name: playoff_tier_type
+        description: >
+          ESPN playoffTierType ("NONE" for regular-season games, e.g.
+          "WINNERS_BRACKET", "LOSERS_CONSOLATION_LADDER").
+      - name: actual_points
+        description: Points this team scored in the matchup (home/away totalPoints).
+      - name: opponent_points
+        description: Points the opponent scored. NULL for byes.
+      - name: margin
+        description: actual_points - opponent_points. Positive is a win. NULL for byes.
+      - name: tiebreak
+        description: ESPN tiebreak points for this side.
+      - name: adjustment
+        description: Manual score adjustment applied to this side, if any.
+      - name: is_home
+        description: True when this row is the home side of the matchup.
+      - name: is_win
+        description: True when result = 'W'. False when result is NULL.
+      - name: is_loss
+        description: True when result = 'L'. False when result is NULL.
+      - name: is_tie
+        description: True when result = 'T'. False when result is NULL.
+      - name: is_bye
+        description: >
+          True when this team-week has no opponent (a playoff first-round
+          bye for a top seed).
+      - name: is_playoff
+        description: True when the matchup is a playoff-bracket game.
+      - name: is_complete
+        description: >
+          True when the matchup has a decided winner (not yet true for
+          unplayed 2026 weeks).
+
   - name: int_fantasy_football_matchup_rosters
     description: >
       Every fantasy team's roster for every matchup, exploded to one row
