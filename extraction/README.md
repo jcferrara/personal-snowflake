@@ -1,7 +1,20 @@
 # extraction
 
 Python scripts that pull data from source APIs and land it, incrementally,
-into Snowflake's `RAW` database. Currently just Garmin Connect.
+into Snowflake's `RAW` database. One self-contained package per source:
+
+- **`garmin/`** → `RAW.GARMIN` — Garmin Connect wellness/activity data.
+- **`fantasy_football/`** → `RAW.FANTASY_FOOTBALL` — an ESPN fantasy football
+  league, pulled straight from ESPN's undocumented v3 API (no wrapper package).
+
+Every landed table across both sources has the same four columns —
+`NATURAL_KEY`, `RAW_DATA` (VARIANT JSON), `EXTRACTED_AT`, `SOURCE_METHOD` —
+and writes are idempotent MERGEs keyed by `NATURAL_KEY`. Flattening the JSON
+is a dbt staging concern, not done here. Snowflake auth is key-pair (the same
+account/key dbt uses); the shared `.env` (see `.env.example`) holds every
+source's config, with `SNOWFLAKE_SCHEMA` set per run.
+
+# Garmin Connect
 
 ## Setup
 
@@ -123,3 +136,100 @@ name) — no new SQL or write logic needed. Response shapes vary by endpoint;
 if a collector's rows land with a fallback key instead of a real date, check
 the endpoint's actual payload shape and extend `DATE_KEY_FIELDS` in
 `collectors.py`.
+
+# ESPN Fantasy Football
+
+Pulls one ESPN fantasy football league directly from ESPN's (unofficial,
+undocumented) fantasy v3 API — no third-party wrapper — and lands it in
+`RAW.FANTASY_FOOTBALL` as raw JSON.
+
+### What it lands
+
+| Table | Grain (`NATURAL_KEY`) | Source view(s) |
+| --- | --- | --- |
+| `LEAGUE_SETTINGS` | `{season}` | `mSettings,mTeam` |
+| `TEAMS` | `{season}-{team_id}` | `mSettings,mTeam` |
+| `MEMBERS` | `{season}-{member_id}` | `mSettings,mTeam` |
+| `DRAFT_PICKS` | `{season}-{overall_pick}` | `mDraftDetail` |
+| `TRANSACTIONS` | `{season}-{transaction_id}` | `mTransactions2` |
+| `MATCHUPS` | `{season}-{week}-{matchup_id}` | `mMatchupScore,mBoxscore` |
+| `FREE_AGENTS` | `{season}-{week}-{player_id}` | `kona_player_info` |
+
+`MATCHUPS` payloads carry the full nested per-player boxscore roster for both
+sides — flatten it in dbt, not here. Because every table shares the raw
+four-column shape, the `RAW_DATA:` / `RAW_DATA::` VARIANT path syntax is how
+dbt staging reads it (same as `RAW.GARMIN`).
+
+## Setup
+
+1. Install into the shared venv (`pip install -r extraction/requirements.txt`).
+2. Run section 10 (`RAW.FANTASY_FOOTBALL`) of `admin/exact_grants.sql` in
+   Snowsight once, if you haven't. The extractor auto-creates the tables; that
+   block just creates the schema and grants `EXTRACTOR`.
+3. Get your **league ID** from the league URL
+   (`.../league?leagueId=123456` → `123456`).
+4. For a private league, get two cookies from a logged-in
+   [fantasy.espn.com](https://fantasy.espn.com) session: DevTools →
+   Application/Storage → Cookies → copy `espn_s2` and `SWID` (keep SWID's
+   surrounding `{braces}`). These last months; a sudden `401` means they
+   expired — grab fresh ones.
+5. Fill `ESPN_LEAGUE_ID`, `ESPN_S2`, `ESPN_SWID`, `ESPN_FIRST_SEASON` in `.env`.
+
+## Running
+
+```
+cd extraction
+python -m fantasy_football.explore            # dump sample_*.json — inspect the real shape first
+python -m fantasy_football.main               # current season, weeks 1..current + a free-agent snapshot
+python -m fantasy_football.main --backfill    # every season since ESPN_FIRST_SEASON
+python -m fantasy_football.main --seasons 2022 2023
+python -m fantasy_football.main --only draft,transactions
+python -m fantasy_football.main --weeks 1-6   # override the matchup week range
+```
+
+Writes MERGE on `NATURAL_KEY`, so re-running (or re-running a failed job) is
+safe and never duplicates. There's no watermark table: the current season is
+cheap to re-pull in full, and past seasons are immutable. If one collector
+errors mid-run, the rest of that season still runs.
+
+**By design:** `FREE_AGENTS` is a snapshot of *now* — ESPN exposes no
+historical free-agent pool, so it's forward-only and skipped for any season
+before the current one (including during `--backfill`). Pre-2018 seasons use a
+different ESPN URL shape (`leagueHistory` vs `seasons/{year}`) and are the most
+likely to have drifted field names — run `explore.py <season>` against an old
+season before backfilling it.
+
+## Cron
+
+```cron
+0 6 * 9,10,11,12,1 2 cd /path/to/personal-snowflake/extraction && /path/to/personal-snowflake/.venv/bin/python -m fantasy_football.main >> /tmp/ff_extract.log 2>&1
+```
+
+## GitHub Actions
+
+`.github/workflows/fantasy_football_extract.yml` runs the extraction ~6am
+Pacific on Tuesdays during the season (Sep–Jan) and can be triggered manually
+(`workflow_dispatch`) — its `seasons` input maps to `--seasons` for a one-off
+historical backfill on the runner.
+
+It reuses the Garmin workflow's `SNOWFLAKE_*` secrets and key handling, so the
+only new secrets to add are the ESPN ones:
+
+```
+gh secret set ESPN_LEAGUE_ID
+gh secret set ESPN_S2
+gh secret set ESPN_SWID
+gh secret set ESPN_FIRST_SEASON
+```
+
+The extraction writes to `RAW.FANTASY_FOOTBALL` unconditionally
+(`snowflake_writer.SCHEMA`), so the Garmin-oriented `SNOWFLAKE_SCHEMA` in the
+shared `.env` / secrets is ignored here — nothing to change.
+
+## Adding a collector
+
+Add a function to `fantasy_football/collectors.py` that returns
+`[(TABLE_NAME, rows)]` (each row `{natural_key, raw_data, source_method}`),
+then register it in `main.py` under `SEASON_COLLECTORS`, `WEEK_COLLECTORS`, or
+`SNAPSHOT_COLLECTORS` depending on its grain. No SQL or write-path changes —
+`snowflake_writer.upsert` creates the table on first run.
