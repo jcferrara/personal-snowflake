@@ -1,0 +1,128 @@
+ticker,name,category,subcategory
+^GSPC,S&P 500 Index,benchmark_index,us_large_cap
+^NDX,Nasdaq-100 Index,benchmark_index,us_large_cap_growth
+^IXIC,Nasdaq Composite Index,benchmark_index,us_broad_market
+^DJI,Dow Jones Industrial Average,benchmark_index,us_large_cap
+^RUT,Russell 2000 Index,benchmark_index,us_small_cap
+^VIX,CBOE Volatility Index,benchmark_index,volatility
+SPY,SPDR S&P 500 ETF Trust,broad_market,us_large_cap
+IVV,iShares Core S&P 500 ETF,broad_market,us_large_cap
+VOO,Vanguard S&P 500 ETF,broad_market,us_large_cap
+VTI,Vanguard Total Stock Market ETF,broad_market,us_total_market
+ITOT,iShares Core S&P Total U.S. Stock Market ETF,broad_market,us_total_market
+QQQ,Invesco QQQ Trust,broad_market,us_large_cap_growth
+DIA,SPDR Dow Jones Industrial Average ETF,broad_market,us_large_cap
+RSP,Invesco S&P 500 Equal Weight ETF,broad_market,us_large_cap_equal_weight
+IWB,iShares Russell 1000 ETF,broad_market,us_large_cap
+MDY,SPDR S&P MidCap 400 ETF,broad_market,us_mid_cap
+IJH,iShares Core S&P Mid-Cap ETF,broad_market,us_mid_cap
+IWM,iShares Russell 2000 ETF,broad_market,us_small_cap
+IJR,iShares Core S&P Small-Cap ETF,broad_market,us_small_cap
+VT,Vanguard Total World Stock ETF,broad_market,global
+ACWI,iShares MSCI ACWI ETF,broad_market,global
+VXUS,Vanguard Total International Stock ETF,broad_market,international
+VEA,Vanguard FTSE Developed Markets ETF,broad_market,international_developed
+EFA,iShares MSCI EAFE ETF,broad_market,international_developed
+IEFA,iShares Core MSCI EAFE ETF,broad_market,international_developed
+VWO,Vanguard FTSE Emerging Markets ETF,broad_market,emerging_markets
+EEM,iShares MSCI Emerging Markets ETF,broad_market,emerging_markets
+IEMG,iShares Core MSCI Emerging Markets ETF,broad_market,emerging_markets
+SPYG,SPDR Portfolio S&P 500 Growth ETF,style_factor,growth
+SPYV,SPDR Portfolio S&P 500 Value ETF,style_factor,value
+VUG,Vanguard Growth ETF,style_factor,growth
+VTV,Vanguard Value ETF,style_factor,value
+IWF,iShares Russell 1000 Growth ETF,style_factor,growth
+IWD,iShares Russell 1000 Value ETF,style_factor,value
+MTUM,iShares MSCI USA Momentum Factor ETF,style_factor,momentum
+QUAL,iShares MSCI USA Quality Factor ETF,style_factor,quality
+USMV,iShares MSCI USA Min Vol Factor ETF,style_factor,low_volatility
+SCHD,Schwab U.S. Dividend Equity ETF,style_factor,dividend
+VIG,Vanguard Dividend Appreciation ETF,style_factor,dividend
+VYM,Vanguard High Dividend Yield ETF,style_factor,dividend
+NOBL,ProShares S&P 500 Dividend Aristocrats ETF,style_factor,dividend
+XLB,Materials Select Sector SPDR Fund,sector,materials
+XLC,Communication Services Select Sector SPDR Fund,sector,communication_services
+XLE,Energy Select Sector SPDR Fund,sector,energy
+XLF,Financial Select Sector SPDR Fund,sector,financials
+XLI,Industrial Select Sector SPDR Fund,sector,industrials
+XLK,Technology Select Sector SPDR Fund,sector,information_technology
+XLP,Consumer Staples Select Sector SPDR Fund,sector,consumer_staples
+XLRE,Real Estate Select Sector SPDR Fund,sector,real_estate
+XLU,Utilities Select Sector SPDR Fund,sector,utilities
+XLV,Health Care Select Sector SPDR Fund,sector,health_care
+XLY,Consumer Discretionary Select Sector SPDR Fund,sector,consumer_discretionary
+VGT,Vanguard Information Technology ETF,sector,information_technology
+VHT,Vanguard Health Care ETF,sector,health_care
+VFH,Vanguard Financials ETF,sector,financials
+VDE,Vanguard Energy ETF,sector,energy
+VNQ,Vanguard Real Estate ETF,sector,real_estate
+SMH,VanEck Semiconductor ETF,industry,semiconductors
+SOXX,iShares Semiconductor ETF,industry,semiconductors
+PSI,Invesco Semiconductors ETF,industry,semiconductors
+IGV,iShares Expanded Tech-Software Sector ETF,industry,software
+SKYY,First Trust Cloud Computing ETF,industry,cloud_computing
+WCLD,WisdomTree Cloud Computing Fund,industry,cloud_computing
+CIBR,First Trust NASDAQ Cybersecurity ETF,industry,cybersecurity
+HACK,Amplify Cybersecurity ETF,industry,cybersecurity
+BOTZ,Global X Robotics & Artificial Intelligence ETF,industry,robotics_ai
+ARKK,ARK Innovation ETF,industry,disruptive_innovation
+ARKG,ARK Genomic Revolution ETF,industry,genomics
+XBI,SPDR S&P Biotech ETF,industry,biotech
+IBB,iShares Biotechnology ETF,industry,biotech
+IHI,iShares U.S. Medical Devices ETF,industry,medical_devices
+KRE,SPDR S&P Regional Banking ETF,industry,regional_banks
+KBE,SPDR S&P Bank ETF,industry,banks
+IAI,iShares U.S. Broker-Dealers & Securities Exchanges ETF,industry,capital_markets
+XHB,SPDR S&P Homebuilders ETF,industry,homebuilders
+ITB,iShares U.S. Home Construction ETF,industry,homebuilders
+XRT,SPDR S&P Retail ETF,industry,retail
+IYT,iShares U.S. Transportation ETF,industry,transportation
+JETS,U.S. Global Jets ETF,industry,airlines
+ITA,iShares U.S. Aerospace & Defense ETF,industry,aerospace_defense
+PAVE,Global X U.S. Infrastructure Development ETF,industry,infrastructure
+XME,SPDR S&P Metals & Mining ETF,industry,metals_mining
+GDX,VanEck Gold Miners ETF,industry,gold_miners
+XOP,SPDR S&P Oil & Gas Exploration & Production ETF,industry,oil_gas_exploration
+OIH,VanEck Oil Services ETF,industry,oil_services
+AMLP,Alerian MLP ETF,industry,midstream_energy
+TAN,Invesco Solar ETF,industry,solar
+ICLN,iShares Global Clean Energy ETF,industry,clean_energy
+PBW,Invesco WilderHill Clean Energy ETF,industry,clean_energy
+LIT,Global X Lithium & Battery Tech ETF,industry,lithium_batteries
+URA,Global X Uranium ETF,industry,uranium
+BLOK,Amplify Transformational Data Sharing ETF,industry,blockchain
+FINX,Global X FinTech ETF,industry,fintech
+EUFN,iShares MSCI Europe Financials ETF,international,europe_financials
+EWJ,iShares MSCI Japan ETF,international,japan
+EWZ,iShares MSCI Brazil ETF,international,brazil
+EWG,iShares MSCI Germany ETF,international,germany
+EWU,iShares MSCI United Kingdom ETF,international,united_kingdom
+EWC,iShares MSCI Canada ETF,international,canada
+EWY,iShares MSCI South Korea ETF,international,south_korea
+EWT,iShares MSCI Taiwan ETF,international,taiwan
+INDA,iShares MSCI India ETF,international,india
+MCHI,iShares MSCI China ETF,international,china
+FXI,iShares China Large-Cap ETF,international,china
+VGK,Vanguard FTSE Europe ETF,international,europe
+AGG,iShares Core U.S. Aggregate Bond ETF,fixed_income,aggregate
+BND,Vanguard Total Bond Market ETF,fixed_income,aggregate
+BIL,SPDR Bloomberg 1-3 Month T-Bill ETF,fixed_income,treasury_bills
+SGOV,iShares 0-3 Month Treasury Bond ETF,fixed_income,treasury_bills
+SHY,iShares 1-3 Year Treasury Bond ETF,fixed_income,treasury_short
+IEF,iShares 7-10 Year Treasury Bond ETF,fixed_income,treasury_intermediate
+TLT,iShares 20+ Year Treasury Bond ETF,fixed_income,treasury_long
+TIP,iShares TIPS Bond ETF,fixed_income,inflation_protected
+LQD,iShares iBoxx $ Investment Grade Corporate Bond ETF,fixed_income,corporate_investment_grade
+HYG,iShares iBoxx $ High Yield Corporate Bond ETF,fixed_income,corporate_high_yield
+MUB,iShares National Muni Bond ETF,fixed_income,municipal
+BNDX,Vanguard Total International Bond ETF,fixed_income,international
+GLD,SPDR Gold Shares,commodity,gold
+IAU,iShares Gold Trust,commodity,gold
+SLV,iShares Silver Trust,commodity,silver
+USO,United States Oil Fund,commodity,oil
+UNG,United States Natural Gas Fund,commodity,natural_gas
+DBC,Invesco DB Commodity Index Tracking Fund,commodity,broad_commodities
+DBB,Invesco DB Base Metals Fund,commodity,base_metals
+DBA,Invesco DB Agriculture Fund,commodity,agriculture
+IBIT,iShares Bitcoin Trust ETF,digital_assets,bitcoin
+ETHA,iShares Ethereum Trust ETF,digital_assets,ethereum

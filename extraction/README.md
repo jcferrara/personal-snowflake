@@ -10,8 +10,11 @@ into Snowflake's `RAW` database. One self-contained package per source:
   via the Plaid API. (Named `plaid_extract`, not `plaid` — the installed
   `plaid-python` SDK itself imports as top-level `plaid`, which a same-named
   local package would shadow.)
+- **`market_data/`** → `RAW.MARKET_DATA` — daily prices, dividends and splits
+  from Yahoo Finance (via `yfinance`) for the S&P 500, a curated ETF/index
+  list, and every security Plaid reports.
 
-Every landed table across both sources has the same four columns —
+Every landed table across every source has the same four columns —
 `NATURAL_KEY`, `RAW_DATA` (VARIANT JSON), `EXTRACTED_AT`, `SOURCE_METHOD` —
 and writes are idempotent MERGEs keyed by `NATURAL_KEY`. Flattening the JSON
 is a dbt staging concern, not done here. Snowflake auth is key-pair (the same
@@ -352,3 +355,84 @@ Add a function to `plaid_extract/collectors.py` that returns
 `[(TABLE_NAME, rows)]` (each row `{natural_key, raw_data, source_method}`),
 then wire it into `main.py`'s per-item `ALL_NAMES`/dispatch. No SQL or
 write-path changes — `snowflake_writer.upsert` creates the table on first run.
+
+# Market data (Yahoo Finance)
+
+Pulls daily prices for a broad ticker universe from Yahoo Finance via the
+`yfinance` library (unofficial — no API key, personal use only) and lands it
+in `RAW.MARKET_DATA` as raw JSON. Feeds portfolio valuation and return
+calculations in dbt, plus benchmarks to compare them against.
+
+### What it lands
+
+| Table | Grain (`NATURAL_KEY`) | Refresh strategy | Source method |
+| --- | --- | --- | --- |
+| `TICKERS` | Yahoo ticker (e.g. `BRK-B`) | full universe snapshot every run | `universe_build` |
+| `DAILY_PRICES` | `{ticker}-{date}` | incremental — per-ticker watermark derived from landed rows | `yfinance_download` |
+
+**Universe** (`market_data/universe.py`), merged into one `TICKERS` row per
+ticker with every list it came from in `RAW_DATA:universes`:
+
+- `sp500` — current S&P 500 constituents scraped from Wikipedia, with GICS
+  sector/sub-industry. If the page fetch fails, the last landed list is reused.
+- `curated` — `market_data/curated_tickers.csv`: broad-market, style/factor,
+  sector, industry, international, fixed income, commodity and digital-asset
+  ETFs, plus benchmark indices (`^GSPC`, `^NDX`, …), each tagged with a
+  `category`/`subcategory`. Edit the CSV to add or remove tickers.
+- `holding` — every non-cash ticker in `RAW.PLAID.SECURITIES` (current and
+  sold positions), with its Plaid `security_id`s for joining in dbt.
+
+Tickers dropped from the universe (e.g. removed from the S&P 500) keep their
+landed rows but stop being refreshed; `TICKERS.EXTRACTED_AT` /
+`RAW_DATA:universe_snapshot_date` shows which rows are current.
+
+**Price semantics** — `DAILY_PRICES.RAW_DATA` carries `open`, `high`, `low`,
+`close`, `adj_close`, `volume`, `dividends`, `stock_splits`:
+
+- `close` is split-adjusted but not dividend-adjusted. Because Yahoo
+  restates split adjustments retroactively, any split seen in a ticker's
+  incremental window triggers a full-history refetch of that ticker so all
+  its rows share one share basis.
+- `adj_close` is only correct as of each row's `EXTRACTED_AT` (Yahoo rewrites
+  it on every ex-dividend date, and old rows aren't refetched). Compute total
+  return in dbt from `close` + `dividends` rather than trusting historical
+  `adj_close`.
+
+## Setup
+
+1. Install into the shared venv (`pip install -r extraction/requirements.txt`).
+2. Run section 12 (`RAW.MARKET_DATA`) of `admin/exact_grants.sql` in
+   Snowsight once. The extractor auto-creates the tables.
+3. No source credentials needed — just the shared `SNOWFLAKE_*` settings in `.env`.
+
+## Running
+
+```
+cd extraction
+python -m market_data.main                                       # universe + prices for all of it
+python -m market_data.main --only tickers                         # just refresh the universe
+python -m market_data.main --tickers SPY,QQQ --since 2024-01-01   # a subset, from a given date
+```
+
+The first run backfills every ticker from `state.DEFAULT_START` (2000-01-01,
+or the ticker's first trading day if later) — roughly 650 tickers × ~6,500
+sessions, a few million rows, so expect it to take a while. After that each
+ticker refetches from its latest landed date minus a 5-day buffer, and a
+ticker newly added to the universe automatically gets a full backfill.
+Tickers Yahoo has no data for (delisted, or Plaid escrow/rights securities
+like `BLCN.ESC`) are logged as a warning, not a failure.
+
+## Cron
+
+```cron
+0 22 * * 2 cd /path/to/personal-snowflake/extraction && /path/to/personal-snowflake/.venv/bin/python -m market_data.main >> /tmp/market_data_extract.log 2>&1
+0 15 * * 5 cd /path/to/personal-snowflake/extraction && /path/to/personal-snowflake/.venv/bin/python -m market_data.main >> /tmp/market_data_extract.log 2>&1
+```
+
+## GitHub Actions
+
+`.github/workflows/market_data_extract.yml` runs twice a week, Tuesday at
+10pm and Friday at 3pm Pacific (paired UTC `cron` entries handle PST/PDT, same
+as the Garmin workflow), and can be triggered manually — its
+`only`/`tickers`/`since` inputs map to the CLI flags. It reuses the existing
+`SNOWFLAKE_*` secrets; there are no new secrets to add.
