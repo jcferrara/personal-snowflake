@@ -1,0 +1,37 @@
+version: 2
+
+sources:
+  - name: plaid
+    database: RAW
+    schema: PLAID
+    description: >
+      Bank and brokerage data from Plaid, landed as semi-structured JSON by
+      extraction/plaid_extract/. Every table shares the same four-column
+      shape: NATURAL_KEY, RAW_DATA (VARIANT), EXTRACTED_AT, SOURCE_METHOD.
+      Rows are MERGEd on NATURAL_KEY, so each table holds the latest
+      version of each entity (no history). Collectors add the Plaid item_id
+      into raw_data. See extraction/plaid_extract/collectors.py and
+      extraction/plaid_extract/snowflake_writer.py.
+    tables:
+      - name: accounts
+        description: >
+          One row per Plaid account, keyed by account_id. Full snapshot
+          every run via accounts_get; balances are overwritten in place.
+      - name: holdings
+        description: >
+          One row per position (account + security), keyed by the
+          composite {account_id}-{security_id} since Plaid has no holding
+          id. Full snapshot every run via investments_holdings_get;
+          quantity/value are overwritten in place, so this is current
+          state only.
+      - name: securities
+        description: >
+          One row per security, keyed by Plaid security_id. Reference data
+          upserted from the securities bucket of both
+          investments_holdings_get and investments_transactions_get.
+      - name: investment_transactions
+        description: >
+          One row per brokerage transaction (buy, sell, dividend, interest,
+          transfer, cash movement), keyed by investment_transaction_id.
+          Landed via investments_transactions_get over a rolling date
+          window.
