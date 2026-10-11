@@ -1,0 +1,199 @@
+version: 2
+
+models:
+  - name: stg_plaid__accounts
+    description: >
+      One row per Plaid account (current state; balances are overwritten
+      each extract). Grain: account_id.
+    columns:
+      - name: account_id
+        description: Primary key. Plaid account_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: item_id
+        description: >
+          Plaid item (institution login) the account belongs to. Added to
+          the payload by the extractor.
+      - name: account_name
+        description: Account name as shown by the institution (e.g. "Individual").
+      - name: official_account_name
+        description: The institution's official name for the account, when provided.
+      - name: account_mask
+        description: Last 2–4 digits of the account number.
+      - name: account_type
+        description: Plaid account type (e.g. "investment", "depository", "credit").
+      - name: account_subtype
+        description: Plaid account subtype (e.g. "brokerage", "checking").
+      - name: iso_currency_code
+        description: ISO-4217 currency of the balance fields.
+      - name: current_balance
+        description: >
+          Total account value as of the extract. For investment accounts
+          this includes holdings plus cash.
+      - name: available_balance
+        description: >
+          Funds available to withdraw or spend (for brokerage accounts,
+          roughly uninvested cash). Null when the institution doesn't
+          report it.
+      - name: credit_limit
+        description: Credit limit for credit/loan accounts; null otherwise.
+      - name: extracted_at
+        description: When this row was last upserted into RAW.PLAID.ACCOUNTS (UTC).
+      - name: source_method
+        description: Plaid endpoint that produced the row (accounts_get).
+
+  - name: stg_plaid__holdings
+    description: >
+      One row per position (account + security), current state only;
+      quantity and value are overwritten each extract. Grain: holding_id.
+    columns:
+      - name: holding_id
+        description: >
+          Primary key. Composite "{account_id}-{security_id}" built by the
+          extractor, since Plaid has no holding id.
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: Account holding the position. FK to stg_plaid__accounts.
+      - name: security_id
+        description: Security held. FK to stg_plaid__securities.
+      - name: item_id
+        description: Plaid item (institution login) the holding belongs to.
+      - name: iso_currency_code
+        description: ISO-4217 currency of the price, value, and cost basis fields.
+      - name: quantity
+        description: Number of shares/units held (can be fractional).
+      - name: cost_basis
+        description: Total cost basis of the position, as reported by the institution.
+      - name: institution_price
+        description: >
+          Per-unit price reported by the institution as of
+          institution_price_as_of_date. Can be 0 for securities the
+          institution no longer prices (e.g. contingent payment rights).
+      - name: institution_value
+        description: Market value of the position (quantity × institution_price).
+      - name: institution_price_as_of_date
+        description: Date the institution_price was last updated.
+      - name: extracted_at
+        description: When this row was last upserted into RAW.PLAID.HOLDINGS (UTC).
+      - name: source_method
+        description: Plaid endpoint that produced the row (investments_holdings_get).
+
+  - name: stg_plaid__securities
+    description: >
+      One row per security referenced by any holding or investment
+      transaction. Grain: security_id.
+    columns:
+      - name: security_id
+        description: Primary key. Plaid security_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: proxy_security_id
+        description: >
+          Plaid security_id of a proxy security used for pricing when this
+          one has no price of its own.
+      - name: institution_security_id
+        description: The institution's own identifier for the security, when provided.
+      - name: institution_id
+        description: Plaid institution that issued institution_security_id.
+      - name: cusip
+        description: 9-character CUSIP identifier.
+      - name: isin
+        description: 12-character ISIN identifier.
+      - name: sedol
+        description: 7-character SEDOL identifier.
+      - name: figi
+        description: OpenFIGI identifier.
+      - name: ticker_symbol
+        description: Exchange ticker (e.g. "QQQ"). Null for cash and unlisted securities.
+      - name: security_name
+        description: Descriptive security name.
+      - name: security_type
+        description: Plaid security type (e.g. "equity", "etf", "cash").
+      - name: security_subtype
+        description: Plaid security subtype (e.g. "common stock", "etf").
+      - name: sector
+        description: Sector classification (e.g. "Technology Services").
+      - name: industry
+        description: Industry classification within the sector.
+      - name: cfi_code
+        description: ISO-10962 Classification of Financial Instruments code.
+      - name: market_identifier_code
+        description: ISO-10383 exchange MIC (e.g. "XNAS").
+      - name: iso_currency_code
+        description: ISO-4217 currency of close_price.
+      - name: close_price
+        description: Most recent closing price, as of close_price_as_of_date.
+      - name: is_cash_equivalent
+        description: Whether the institution treats the security as cash (e.g. money market sweep).
+      - name: close_price_as_of_date
+        description: Date of close_price.
+      - name: updated_at
+        description: When Plaid last updated the security's price data, if provided.
+      - name: extracted_at
+        description: When this row was last upserted into RAW.PLAID.SECURITIES (UTC).
+      - name: source_method
+        description: >
+          Plaid endpoint whose securities bucket last upserted the row
+          (investments_holdings_get or investments_transactions_get).
+
+  - name: stg_plaid__investment_transactions
+    description: >
+      One row per brokerage transaction — buys, sells, dividends,
+      interest, transfers, and cash movements. Grain:
+      investment_transaction_id.
+    columns:
+      - name: investment_transaction_id
+        description: Primary key. Plaid investment_transaction_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: Account the transaction posted to. FK to stg_plaid__accounts.
+      - name: security_id
+        description: >
+          Security the transaction relates to. FK to stg_plaid__securities.
+          For cash transactions (dividends, interest) this is the
+          security that generated the cash, or the cash security.
+      - name: cancel_transaction_id
+        description: >
+          For cancellation transactions, the investment_transaction_id
+          being cancelled. Null otherwise.
+      - name: item_id
+        description: Plaid item (institution login) the transaction belongs to.
+      - name: transaction_name
+        description: Institution's description (e.g. "INVESCO QQQ TR - DIVIDEND").
+      - name: transaction_type
+        description: Plaid type — buy, sell, cancel, cash, fee, or transfer.
+      - name: transaction_subtype
+        description: Plaid subtype (e.g. dividend, interest, deposit, withdrawal, buy).
+      - name: iso_currency_code
+        description: ISO-4217 currency of price, fees, and amount.
+      - name: quantity
+        description: >
+          Number of units of security_id involved. Positive for buys,
+          negative for sells; 0 for pure cash events like dividends.
+      - name: price
+        description: Per-unit price of the security in the transaction.
+      - name: fees
+        description: Fees charged on the transaction.
+      - name: amount
+        description: >
+          Cash impact on the account, using Plaid's sign convention:
+          positive = cash leaves the account (e.g. a buy), negative = cash
+          enters the account (e.g. a dividend or sell). Not flipped here.
+      - name: transaction_date
+        description: Date the transaction posted.
+      - name: transacted_at
+        description: >
+          Transaction timestamp, when the institution provides one (often
+          midnight UTC on transaction_date).
+      - name: extracted_at
+        description: >
+          When this row was last upserted into
+          RAW.PLAID.INVESTMENT_TRANSACTIONS (UTC).
+      - name: source_method
+        description: Plaid endpoint that produced the row (investments_transactions_get).
