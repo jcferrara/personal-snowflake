@@ -1,0 +1,76 @@
+name: Plaid extract
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Comma-separated table names to run (default: all): accounts,transactions,investment_transactions,holdings"
+        required: false
+        default: ""
+      since:
+        description: "ISO date (YYYY-MM-DD) overriding the investment_transactions watermark for this run"
+        required: false
+        default: ""
+  schedule:
+    # Transaction/investment freshness has no wall-clock-sensitive property
+    # the way Garmin's overnight wellness sync or fantasy football's weekly
+    # state transitions do, so a single UTC cron (no PST/PDT pairing) is
+    # fine here — a simplification vs. the other two workflows.
+    - cron: "0 13 * * *" # ~5-6am Pacific, after US banks/brokerages post overnight batches
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r extraction/requirements.txt
+
+      - name: Restore Snowflake private key
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$SNOWFLAKE_PRIVATE_KEY_B64" | base64 -d > "$RUNNER_TEMP/keys/snowflake_key.p8"
+          chmod 600 "$RUNNER_TEMP/keys/snowflake_key.p8"
+        env:
+          SNOWFLAKE_PRIVATE_KEY_B64: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_B64 }}
+
+      - name: Run extraction
+        working-directory: extraction
+        run: |
+          args=()
+          if [ -n "$ONLY" ]; then
+            args+=(--only "$ONLY")
+          fi
+          if [ -n "$SINCE" ]; then
+            args+=(--since "$SINCE")
+          fi
+          python -m plaid_extract.main "${args[@]}"
+        env:
+          # workflow_dispatch inputs passed as data via env vars, never spliced
+          # into the run: string directly — see commit 1b29f80 (fantasy_football
+          # hardening) for why: a malicious dispatch trigger could otherwise
+          # inject shell and exfiltrate this job's secrets (Snowflake key, Plaid
+          # secret, item access tokens).
+          ONLY: ${{ github.event.inputs.only }}
+          SINCE: ${{ github.event.inputs.since }}
+          PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+          PLAID_ENV: ${{ secrets.PLAID_ENV }}
+          PLAID_ACCESS_TOKENS: ${{ secrets.PLAID_ACCESS_TOKENS }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          # SNOWFLAKE_SCHEMA is not passed — plaid_extract/snowflake_writer.py
+          # fixes it to PLAID, same reasoning as fantasy_football's SCHEMA constant.
+          SNOWFLAKE_PRIVATE_KEY_PATH: ${{ runner.temp }}/keys/snowflake_key.p8
+          SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}

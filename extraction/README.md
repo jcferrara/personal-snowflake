@@ -6,6 +6,10 @@ into Snowflake's `RAW` database. One self-contained package per source:
 - **`garmin/`** → `RAW.GARMIN` — Garmin Connect wellness/activity data.
 - **`fantasy_football/`** → `RAW.FANTASY_FOOTBALL` — an ESPN fantasy football
   league, pulled straight from ESPN's undocumented v3 API (no wrapper package).
+- **`plaid_extract/`** → `RAW.PLAID` — bank transaction and investment data
+  via the Plaid API. (Named `plaid_extract`, not `plaid` — the installed
+  `plaid-python` SDK itself imports as top-level `plaid`, which a same-named
+  local package would shadow.)
 
 Every landed table across both sources has the same four columns —
 `NATURAL_KEY`, `RAW_DATA` (VARIANT JSON), `EXTRACTED_AT`, `SOURCE_METHOD` —
@@ -237,3 +241,114 @@ Add a function to `fantasy_football/collectors.py` that returns
 then register it in `main.py` under `SEASON_COLLECTORS`, `WEEK_COLLECTORS`, or
 `SNAPSHOT_COLLECTORS` depending on its grain. No SQL or write-path changes —
 `snowflake_writer.upsert` creates the table on first run.
+
+# Plaid
+
+Pulls transaction and investment data from linked bank/brokerage accounts via
+the Plaid API (production environment) and lands it in `RAW.PLAID` as raw
+JSON, one row set per linked Item (institution).
+
+### What it lands
+
+| Table | Grain (`NATURAL_KEY`) | Refresh strategy | Source method(s) |
+| --- | --- | --- | --- |
+| `ACCOUNTS` | `account_id` | full snapshot every run | `accounts_get` |
+| `TRANSACTIONS` | `transaction_id` | incremental — per-item cursor | `transactions_sync` / `transactions_sync_removed` |
+| `INVESTMENT_TRANSACTIONS` | `investment_transaction_id` | incremental — per-item date watermark + offset pagination | `investments_transactions_get` |
+| `HOLDINGS` | `{account_id}-{security_id}` | full snapshot every run (no stable Plaid ID) | `investments_holdings_get` |
+| `SECURITIES` | `security_id` | full snapshot, deduped across both investment endpoints | `investments_transactions_get`, `investments_holdings_get` |
+
+`TRANSACTIONS` rows for a Plaid-reported removal land with
+`RAW_DATA:removed = true` and `SOURCE_METHOD = 'transactions_sync_removed'`
+rather than being deleted — interpreting that is a dbt staging concern, same
+as flattening everything else here. `RAW.PLAID._EXTRACT_STATE` tracks each
+linked item's sync cursor / date watermark, mirroring `RAW.GARMIN._EXTRACT_STATE`.
+
+## Setup
+
+1. Install into the shared venv (`pip install -r extraction/requirements.txt`).
+2. Run section 11 (`RAW.PLAID`) of `admin/exact_grants.sql` in Snowsight once,
+   if you haven't. The extractor auto-creates the tables; that block just
+   creates the schema and grants `EXTRACTOR`.
+3. Create a Plaid account and get **Production** `client_id`/`secret` from the
+   dashboard (production access requires Plaid's approval process — build and
+   test against **Sandbox** first with `PLAID_ENV=sandbox` while waiting).
+4. Link each bank/brokerage with `python -m plaid_extract.link_item` (see
+   "Linking a new institution" below), and collect the printed
+   `{item_id, access_token, nickname}` entries.
+5. Fill `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, and `PLAID_ACCESS_TOKENS`
+   (the JSON array of entries from step 4) in `.env`.
+
+## Running
+
+```
+cd extraction
+python -m plaid_extract.main                                   # every item, every table
+python -m plaid_extract.main --only accounts,transactions       # a subset, useful for testing
+python -m plaid_extract.main --since 2024-01-01                 # override investment_transactions' watermark
+```
+
+Writes MERGE on `NATURAL_KEY`, so re-running (or re-running a failed job) is
+safe and never duplicates. `transactions_sync` naturally returns Plaid's full
+available history (typically up to ~24 months) on the very first run for a
+newly linked item, since there's no prior cursor yet; `investment_transactions`
+defaults to a 2-year lookback on first run (`state.DEFAULT_LOOKBACK_DAYS`),
+overridable with `--since` for a deeper backfill. If one item fails (including
+`ITEM_LOGIN_REQUIRED` — see below), the rest of that run still processes the
+other items.
+
+## Linking a new institution
+
+`python -m plaid_extract.link_item` is a **standalone local tool — never run
+in CI** (Plaid Link is a browser-JS widget; it can't run unattended on a
+runner, and the resulting access token is long-lived so it doesn't need to be
+re-minted on every run). From the repo:
+
+```
+cd extraction
+python -m plaid_extract.link_item
+```
+
+Open `http://localhost:8000`, click through Plaid Link for one institution,
+and the script prints the resulting `{item_id, access_token, nickname}` to
+the terminal — merge it into `PLAID_ACCESS_TOKENS`'s JSON array in `.env`
+(and later, the GitHub secret). Repeat once per institution.
+
+If a scheduled run logs `ITEM_LOGIN_REQUIRED` for an item, that item's access
+token is still valid but Plaid needs the user to re-authenticate interactively
+("update mode") — which can't happen in CI. Re-run `link_item.py` for that
+institution and refresh `PLAID_ACCESS_TOKENS` with the new entry.
+
+## Cron
+
+```cron
+0 6 * * * cd /path/to/personal-snowflake/extraction && /path/to/personal-snowflake/.venv/bin/python -m plaid_extract.main >> /tmp/plaid_extract.log 2>&1
+```
+
+## GitHub Actions
+
+`.github/workflows/plaid_extract.yml` runs the extraction once a day
+(a single UTC cron — no PST/PDT pairing, since transaction/investment
+freshness has no wall-clock-sensitive property) and can be triggered manually
+(`workflow_dispatch`) — its `only`/`since` inputs map to `--only`/`--since`.
+
+It reuses the existing `SNOWFLAKE_*` secrets, so the only new secrets to add
+are the Plaid ones:
+
+```
+gh secret set PLAID_CLIENT_ID
+gh secret set PLAID_SECRET
+gh secret set PLAID_ENV
+gh secret set PLAID_ACCESS_TOKENS
+```
+
+The extraction writes to `RAW.PLAID` unconditionally
+(`snowflake_writer.SCHEMA`), so the Garmin-oriented `SNOWFLAKE_SCHEMA` in the
+shared `.env` / secrets is ignored here — nothing to change.
+
+## Adding a collector
+
+Add a function to `plaid_extract/collectors.py` that returns
+`[(TABLE_NAME, rows)]` (each row `{natural_key, raw_data, source_method}`),
+then wire it into `main.py`'s per-item `ALL_NAMES`/dispatch. No SQL or
+write-path changes — `snowflake_writer.upsert` creates the table on first run.
