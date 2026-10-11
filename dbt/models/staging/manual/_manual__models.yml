@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_manual__beginning_investments
+    description: >
+      One row per brokerage position held at the start of tracking, from
+      the manually maintained RAW.MANUAL.BEGINNING_INVESTMENTS table.
+      Grain: one row per security (surrogate key beginning_investment_id).
+    columns:
+      - name: beginning_investment_id
+        description: >
+          Primary key. Surrogate key generated from the raw ticker_symbol
+          and description, since the source has no id column and the
+          placeholder ticker 'NO NUMBER' is not guaranteed unique.
+        data_tests:
+          - unique
+          - not_null
+      - name: ticker_symbol
+        description: >
+          Exchange ticker for the security (e.g. "SPY"). Null when the
+          source has the brokerage placeholder 'NO NUMBER', which marks
+          positions with no tradable ticker (e.g. contingent payment rights).
+      - name: security_name
+        description: >
+          Brokerage-provided security description (e.g. "INVESCO QQQ TR").
+          Renamed from the source column `description`.
+      - name: asset_type
+        description: >
+          Brokerage asset classification, passed through as-is (e.g.
+          "Equity", "ETFs & Closed End Funds").
+      - name: share_quantity
+        description: Number of shares held at the start of tracking.
+      - name: cost_per_share_usd
+        description: Average cost basis per share, in USD.

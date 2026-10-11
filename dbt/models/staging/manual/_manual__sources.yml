@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: manual
+    database: RAW
+    schema: MANUAL
+    description: >
+      Hand-maintained reference data loaded directly into Snowflake (no
+      extraction pipeline). Used for facts that no API source provides,
+      such as opening balances.
+    tables:
+      - name: beginning_investments
+        description: >
+          One row per brokerage position held at the start of tracking,
+          with share count and average cost per share. Manually entered;
+          has no natural id, as-of date, or load timestamp.
