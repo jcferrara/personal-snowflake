@@ -1,0 +1,24 @@
+version: 2
+
+sources:
+  - name: market_data
+    database: RAW
+    schema: MARKET_DATA
+    description: >
+      Daily market prices from Yahoo Finance, landed as semi-structured
+      JSON by extraction/market_data/. Every table shares the same
+      four-column shape: NATURAL_KEY, RAW_DATA (VARIANT), EXTRACTED_AT,
+      SOURCE_METHOD. Rows are MERGEd on NATURAL_KEY.
+    tables:
+      - name: tickers
+        description: >
+          One row per ticker in the extraction universe (S&P 500
+          constituents, curated ETFs/benchmark indices, and Plaid-reported
+          securities), keyed by Yahoo ticker. Full snapshot every run;
+          tickers dropped from the universe keep their last row.
+      - name: daily_prices
+        description: >
+          One row per ticker per trading day, keyed by "{ticker}-{date}":
+          OHLC, adjusted close, volume, dividends, and splits. Incremental
+          per ticker; a split triggers a full-history refetch of that
+          ticker so its rows share one share basis.

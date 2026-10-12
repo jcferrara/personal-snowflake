@@ -1,34 +1,84 @@
 version: 2
 
 models:
-  - name: stg_manual__beginning_investments
+  - name: stg_manual__investment_transactions_historical
     description: >
-      One row per brokerage position held at the start of tracking, from
-      the manually maintained RAW.MANUAL.BEGINNING_INVESTMENTS table.
-      Grain: one row per security (surrogate key beginning_investment_id).
+      One row per historical brokerage transaction (buys, sells, dividends,
+      interest, splits, liquidations, and synthetic gap-filling rows), from
+      the manually maintained RAW.MANUAL.INVESTMENT_TRANSACTIONS_HISTORICAL
+      table. Grain: investment_transaction_id. Renamed only; quantities are
+      in the pre-split share basis of the trade date.
     columns:
-      - name: beginning_investment_id
-        description: >
-          Primary key. Surrogate key generated from the raw ticker_symbol
-          and description, since the source has no id column and the
-          placeholder ticker 'NO NUMBER' is not guaranteed unique.
+      - name: investment_transaction_id
+        description: Primary key. The source txn_id (e.g. "T0001").
         data_tests:
           - unique
           - not_null
+      - name: brokerage_name
+        description: >
+          Brokerage that recorded the transaction ("TD Ameritrade" before
+          the 2023 account conversion, "Charles Schwab" after). Renamed
+          from the source column `account`.
+      - name: source_file
+        description: >
+          Export file the row came from, or 'SYNTHETIC' for rows added by
+          hand to close gaps between exports.
+      - name: brokerage_action
+        description: >
+          Brokerage's raw action label (e.g. "Buy", "Cash Dividend",
+          "Final Cash/Stock Liq"). Renamed from `action_raw`.
+      - name: transaction_type
+        description: >
+          Normalized type from the source: BUY, SELL, DIVIDEND, INTEREST,
+          STOCK_SPLIT, COST_BASIS_ADJ, LIQUIDATION_SHARES,
+          LIQUIDATION_CASH, or ESCROW_RECEIVED. Renamed from `txn_type`.
       - name: ticker_symbol
         description: >
-          Exchange ticker for the security (e.g. "SPY"). Null when the
-          source has the brokerage placeholder 'NO NUMBER', which marks
-          positions with no tradable ticker (e.g. contingent payment rights).
-      - name: security_name
+          Security symbol. Null for bank interest; brokerage-internal
+          symbols for non-tradable positions (e.g. "MMDA1" cash sweep,
+          "829ESC029" BLCN liquidation escrow).
+      - name: transaction_description
+        description: Brokerage's description of the transaction.
+      - name: synthetic_note
+        description: Explanation of how a synthetic row was derived; null otherwise.
+      - name: source_row_number
+        description: Row number within source_file; null for synthetic rows.
+      - name: quantity
         description: >
-          Brokerage-provided security description (e.g. "INVESCO QQQ TR").
-          Renamed from the source column `description`.
-      - name: asset_type
+          Shares bought (positive) or sold (negative), in the share basis
+          of the trade date (not split-adjusted). Stock-split rows carry
+          the shares added by the split.
+      - name: price_usd
+        description: Per-share trade price, in the trade date's share basis.
+      - name: fees_usd
+        description: Fees charged on the transaction.
+      - name: amount_usd
         description: >
-          Brokerage asset classification, passed through as-is (e.g.
-          "Equity", "ETFs & Closed End Funds").
-      - name: share_quantity
-        description: Number of shares held at the start of tracking.
-      - name: cost_per_share_usd
-        description: Average cost basis per share, in USD.
+          Cash impact on the account in the brokerage's sign convention:
+          positive = cash into the account (sales, dividends), negative =
+          cash out (purchases). Opposite of Plaid's convention.
+      - name: cost_basis_change_usd
+        description: >
+          Change in the position's cost basis from this transaction, as
+          reported by the brokerage (positive for buys, negative for
+          sales/liquidations, adjustments for basis restatements).
+      - name: running_shares
+        description: >
+          Position share count after this transaction, as recorded in the
+          source. Sparsely populated.
+      - name: running_cost_basis_usd
+        description: >
+          Position cost basis after this transaction, as recorded in the
+          source. Sparsely populated.
+      - name: is_synthetic
+        description: True for rows added by hand rather than exported by the brokerage.
+      - name: is_position_affecting
+        description: >
+          True when the row changes the share count (buys, sells, splits,
+          liquidation shares, escrow). Renamed from `affects_position`.
+      - name: trade_date
+        description: Date the transaction was executed.
+      - name: as_of_date
+        description: >
+          Brokerage "as of" date when it differs from the trade date (e.g.
+          interest accrual end, split record date); usually null.

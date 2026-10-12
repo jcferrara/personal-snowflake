@@ -1,0 +1,107 @@
+version: 2
+
+models:
+  - name: stg_market_data__tickers
+    description: >
+      One row per ticker in the market-data extraction universe, with its
+      descriptive attributes and which lists it came from. Grain:
+      ticker_symbol.
+    columns:
+      - name: ticker_symbol
+        description: >
+          Primary key. Yahoo ticker (class shares use "-", e.g. "BRK-B";
+          indices start with "^", e.g. "^GSPC").
+        data_tests:
+          - unique
+          - not_null
+      - name: sec_cik
+        description: SEC Central Index Key, for S&P 500 constituents only.
+      - name: source_symbol
+        description: >
+          Symbol as the source list spelled it before Yahoo normalization
+          (e.g. "BRK.B").
+      - name: security_name
+        description: >
+          Security name, preferring the S&P 500 list, then the curated
+          list, then Plaid's name.
+      - name: gics_sector
+        description: GICS sector, for S&P 500 constituents only.
+      - name: gics_sub_industry
+        description: GICS sub-industry, for S&P 500 constituents only.
+      - name: curated_category
+        description: >
+          Category from extraction/market_data/curated_tickers.csv (e.g.
+          "sector", "industry", "fixed_income", "benchmark_index"); null
+          for tickers not on the curated list.
+      - name: curated_subcategory
+        description: >
+          Subcategory from the curated list (e.g. "semiconductors",
+          "us_large_cap").
+      - name: plaid_security_type
+        description: Plaid security type (e.g. "etf", "equity") for Plaid-reported tickers.
+      - name: universes
+        description: >
+          Array of the lists the ticker came from: any of "sp500",
+          "curated", "holding".
+      - name: plaid_security_ids
+        description: Array of Plaid security_ids that map to this ticker.
+      - name: is_sp500_constituent
+        description: True when "sp500" is in universes as of the last snapshot.
+      - name: is_curated
+        description: True when the ticker is on the curated ETF/index list.
+      - name: is_plaid_holding
+        description: True when Plaid has reported the security (held now or previously traded).
+      - name: sp500_added_date
+        description: Date the company was added to the S&P 500, from Wikipedia.
+      - name: universe_snapshot_date
+        description: >
+          Date of the extraction run that last wrote this row. Older than
+          the latest run means the ticker has left the universe.
+      - name: extracted_at
+        description: When this row was last upserted into RAW.MARKET_DATA.TICKERS (UTC).
+      - name: source_method
+        description: Extraction step that produced the row (universe_build).
+
+  - name: stg_market_data__daily_prices
+    description: >
+      One row per ticker per trading day from Yahoo Finance. Grain:
+      daily_price_id (ticker_symbol + price_date).
+    columns:
+      - name: daily_price_id
+        description: Primary key. "{ticker_symbol}-{price_date}".
+        data_tests:
+          - unique
+          - not_null
+      - name: ticker_symbol
+        description: Yahoo ticker. FK to stg_market_data__tickers.
+      - name: open_price_usd
+        description: Opening price, split-adjusted.
+      - name: high_price_usd
+        description: Intraday high, split-adjusted.
+      - name: low_price_usd
+        description: Intraday low, split-adjusted.
+      - name: close_price_usd
+        description: >
+          Closing price, adjusted for splits (retroactively, in today's
+          share basis) but not for dividends. Combine with
+          dividend_per_share_usd for total return.
+      - name: adjusted_close_price_usd
+        description: >
+          Yahoo's split- and dividend-adjusted close. Only correct as of
+          extracted_at: Yahoo rewrites history on every ex-dividend date
+          and older rows aren't refetched, so don't use it for historical
+          total return.
+      - name: share_volume
+        description: Shares traded that day.
+      - name: dividend_per_share_usd
+        description: Cash dividend per share with its ex-date on price_date; 0 otherwise.
+      - name: stock_split_ratio
+        description: >
+          Split ratio effective on price_date (e.g. 3.0 for a 3-for-1
+          split). Nulled from Yahoo's 0 on non-split days.
+      - name: price_date
+        description: Trading day.
+      - name: extracted_at
+        description: When this row was last upserted into RAW.MARKET_DATA.DAILY_PRICES (UTC).
+      - name: source_method
+        description: Extraction step that produced the row (yfinance_download).

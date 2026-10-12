@@ -20,6 +20,9 @@ vars:
   dbt_date:time_zone: 'America/Los_Angeles'
   dim_dates_start_date: '2020-01-01'
   dim_dates_end_date: "{{ (modules.datetime.date.today() + modules.datetime.timedelta(days=365)).strftime('%Y-%m-%d') }}"
+  # Investment transactions before this date come from
+  # RAW.MANUAL.INVESTMENT_TRANSACTIONS_HISTORICAL; on/after it, from Plaid.
+  investment_plaid_cutover_date: '2026-10-11'
 
 models:
   personal_snowflake:
