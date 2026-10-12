@@ -1,0 +1,104 @@
+version: 2
+
+models:
+  - name: metrics_investment_returns_daily
+    description: >
+      Daily investment performance at two scopes in one table: each
+      holding (return_scope = 'holding', one row per ticker per day held)
+      and the whole portfolio (return_scope = 'portfolio', ticker_symbol
+      null, one row per day since the first purchase). Aggregated from
+      fct_investment_lot_daily_values. Daily returns are time-weighted
+      (cash flows neutralized), chained into a growth index, and compared
+      against the index at the start of trailing windows for 1M, 3M, YTD,
+      1Y, 3Y, and 5Y returns as of each day; the latest date gives current
+      returns. Scope is the securities themselves: uninvested cash and
+      cash interest are excluded, so purchases count as money in and sale
+      proceeds and dividends as money out. Grain: one row per date_day per
+      return_scope per ticker_symbol.
+    columns:
+      - name: investment_return_day_id
+        description: Primary key. Surrogate key (date_day, return_scope, ticker_symbol).
+        data_tests:
+          - unique
+          - not_null
+      - name: ticker_symbol
+        description: Holding's ticker; null on portfolio rows. FK to dim_securities.
+      - name: return_scope
+        description: "'holding' (one ticker) or 'portfolio' (all holdings combined)."
+      - name: market_value_usd
+        description: End-of-day market value of shares held.
+      - name: portfolio_weight_pct
+        description: >
+          market_value_usd / the portfolio's market value that day (1.0 on
+          portfolio rows).
+      - name: prior_market_value_usd
+        description: >
+          Previous calendar day's market value for the same scope; 0 on the
+          first day, or after a gap when a holding was fully sold and later
+          re-bought.
+      - name: cost_basis_open_usd
+        description: Cost basis of shares held at the end of the day.
+      - name: unrealized_gain_usd
+        description: market_value_usd − cost_basis_open_usd.
+      - name: purchases_usd
+        description: Cash spent on purchases that day.
+      - name: proceeds_usd
+        description: Sale and liquidation proceeds received that day.
+      - name: realized_gain_usd
+        description: FIFO realized gain on shares disposed that day.
+      - name: dividend_income_usd
+        description: Dividends received that day.
+      - name: cumulative_purchases_usd
+        description: Purchases since the scope's first day.
+      - name: cumulative_proceeds_usd
+        description: Sale and liquidation proceeds since the scope's first day.
+      - name: cumulative_realized_gain_usd
+        description: Realized gains since the scope's first day.
+      - name: cumulative_dividend_income_usd
+        description: Dividends since the scope's first day.
+      - name: total_return_usd
+        description: >
+          Dollar gain since the scope's first day: market_value_usd +
+          cumulative_proceeds_usd + cumulative_dividend_income_usd −
+          cumulative_purchases_usd.
+      - name: daily_return_pct
+        description: >
+          Time-weighted return for the day: (market_value_usd −
+          prior_market_value_usd − purchases_usd + proceeds_usd +
+          dividend_income_usd) / (prior_market_value_usd + purchases_usd).
+          Null when nothing was invested.
+      - name: growth_index
+        description: >
+          Daily returns chained since inception (product of 1 +
+          daily_return_pct, starting at 1.0). Any period's time-weighted
+          return is the ratio of two growth_index values minus 1.
+      - name: twr_since_inception_pct
+        description: growth_index − 1.
+      - name: twr_since_inception_annualized_pct
+        description: >
+          growth_index ^ (365 / days since inception) − 1. Null in the
+          scope's first year.
+      - name: twr_1m_pct
+        description: Time-weighted return over the trailing calendar month. Null if the scope is younger.
+      - name: twr_3m_pct
+        description: Time-weighted return over the trailing three months. Null if the scope is younger.
+      - name: twr_ytd_pct
+        description: >
+          Time-weighted return since the prior year-end (Dec 31). Null if
+          the scope started this year.
+      - name: twr_1y_pct
+        description: Time-weighted return over the trailing year. Null if the scope is younger.
+      - name: twr_3y_pct
+        description: Cumulative time-weighted return over the trailing three years.
+      - name: twr_5y_pct
+        description: Cumulative time-weighted return over the trailing five years.
+      - name: twr_3y_annualized_pct
+        description: (1 + twr_3y_pct) ^ (1/3) − 1.
+      - name: twr_5y_annualized_pct
+        description: (1 + twr_5y_pct) ^ (1/5) − 1.
+      - name: is_portfolio_scope
+        description: True on portfolio rows.
+      - name: inception_date
+        description: First day of the scope (first purchase of the ticker, or of anything for the portfolio).
+      - name: date_day
+        description: Calendar day.

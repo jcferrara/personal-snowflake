@@ -1,0 +1,263 @@
+version: 2
+
+models:
+  - name: dim_securities
+    description: >
+      One row per security that is either in the market-data universe (S&P
+      500, curated ETFs and benchmark indices, Plaid-reported securities)
+      or appears in the investment transaction history (including
+      brokerage-internal symbols like the MMDA1 cash sweep and the
+      829ESC029 BLCN escrow). Grain: ticker_symbol, used as the natural key
+      across the investment models rather than a generated security_id,
+      because stg_plaid__securities.security_id already means Plaid's id.
+    columns:
+      - name: ticker_symbol
+        description: Primary key. Yahoo ticker or brokerage symbol.
+        data_tests:
+          - unique
+          - not_null
+      - name: security_name
+        description: >
+          Security name from the market-data universe, or the longest
+          transaction description for transaction-only symbols.
+      - name: security_category
+        description: >
+          Single classification: the curated category when on the curated
+          list (e.g. "sector", "fixed_income", "benchmark_index"), else
+          'equity' for S&P 500 constituents, else Plaid's security type,
+          else 'unclassified'.
+      - name: curated_subcategory
+        description: Curated subcategory (e.g. "semiconductors"), when on the curated list.
+      - name: gics_sector
+        description: GICS sector, for S&P 500 constituents.
+      - name: gics_sub_industry
+        description: GICS sub-industry, for S&P 500 constituents.
+      - name: num_lots
+        description: Number of purchase lots ever opened in the security.
+      - name: is_sp500_constituent
+        description: True when in the S&P 500 as of the last universe snapshot.
+      - name: is_curated
+        description: True when on the curated ETF/index list.
+      - name: is_ever_held
+        description: True when at least one purchase lot exists.
+      - name: has_market_prices
+        description: True when Yahoo daily prices exist for the ticker.
+      - name: sp500_added_date
+        description: Date added to the S&P 500.
+      - name: first_acquired_date
+        description: Earliest purchase date, for held securities.
+      - name: first_price_date
+        description: Earliest Yahoo price date.
+      - name: last_price_date
+        description: Latest Yahoo price date.
+
+  - name: fct_investment_transactions
+    description: >
+      One row per brokerage investment transaction across both eras
+      (manual history before the Plaid cutover, Plaid after), normalized
+      and split-adjusted, with realized results attached to the
+      share-removing rows. Grain: investment_transaction_id.
+    columns:
+      - name: investment_transaction_id
+        description: Primary key. Historical txn_id or Plaid investment_transaction_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: ticker_symbol
+        description: Security; null for cash activity. FK to dim_securities.
+      - name: transaction_source
+        description: "'manual_historical' or 'plaid'."
+      - name: brokerage_name
+        description: Brokerage on historical rows; null for Plaid rows.
+      - name: transaction_category
+        description: >
+          Normalized category (buy, sell, dividend, interest, fee,
+          stock_split, cost_basis_adjustment, liquidation, escrow_received,
+          cash_transfer, other). See int_investment_transactions_unioned
+          for the mapping.
+      - name: source_transaction_type
+        description: Original source type (historical txn_type or Plaid "type/subtype").
+      - name: transaction_description
+        description: Brokerage or Plaid description.
+      - name: quantity
+        description: Shares as recorded on the trade date, before split adjustment.
+      - name: split_adjustment_factor
+        description: Multiplier from trade-date shares to today's share basis.
+      - name: split_adjusted_quantity
+        description: quantity × split_adjustment_factor.
+      - name: position_quantity_change
+        description: >
+          Split-adjusted shares added (+) or removed (−); non-zero only
+          for buy, sell, and liquidation.
+      - name: price_usd
+        description: Per-share trade price as recorded.
+      - name: fees_usd
+        description: Fees charged.
+      - name: cash_amount_usd
+        description: >
+          Cash impact: positive = into the account, negative = out
+          (purchases).
+      - name: cost_basis_change_usd
+        description: Brokerage-reported basis change (historical) or purchase amount (Plaid buys).
+      - name: cost_basis_relieved_usd
+        description: >
+          FIFO cost basis of the shares this transaction removed. Set only
+          on share-removing rows; split pro rata by shares when a ticker
+          has several on one day.
+      - name: realized_gain_usd
+        description: >
+          FIFO realized gain on this transaction's shares (proceeds − cost
+          basis relieved). For a liquidation, the gain sits on the
+          share-removal row while the payout sits on the cash row.
+      - name: is_synthetic
+        description: True for hand-added historical gap-filling rows.
+      - name: is_position_affecting
+        description: True when position_quantity_change is non-zero.
+      - name: trade_date
+        description: Date the transaction executed.
+
+  - name: fct_investment_lots
+    description: >
+      One row per purchase lot (each buy is a lot) with its current
+      valuation (or final, for fully sold lots) and lifetime returns: the
+      per-transaction view of performance. Shares and cost basis are in
+      today's share basis; sales are matched to lots first-in-first-out.
+      Grain: lot_id.
+    columns:
+      - name: lot_id
+        description: Primary key. investment_transaction_id of the opening buy.
+        data_tests:
+          - unique
+          - not_null
+      - name: ticker_symbol
+        description: Security bought. FK to dim_securities.
+      - name: transaction_source
+        description: Source of the opening buy.
+      - name: price_source
+        description: >
+          Price basis of the latest valuation ('market_close' or
+          'cost_basis_no_market_data').
+      - name: fifo_sequence_number
+        description: Lot's position in its ticker's FIFO order (1 = oldest).
+      - name: lot_quantity
+        description: Shares bought (today's share basis).
+      - name: quantity_open
+        description: Shares still held (0 for closed lots).
+      - name: purchase_price_per_share_usd
+        description: Cash paid per share (today's share basis).
+      - name: purchase_amount_usd
+        description: Cash paid for the lot, including fees.
+      - name: cost_basis_usd
+        description: Brokerage cost basis of the full lot, including allocated restatements.
+      - name: cost_basis_per_share_usd
+        description: cost_basis_usd / lot_quantity.
+      - name: cost_basis_adjustment_usd
+        description: Allocated brokerage basis restatements included in cost_basis_usd.
+      - name: cost_basis_open_usd
+        description: Cost basis of the shares still held.
+      - name: close_price_usd
+        description: Close used for the latest valuation.
+      - name: market_value_usd
+        description: Value of the shares still held (0 for closed lots).
+      - name: unrealized_gain_usd
+        description: market_value_usd − cost_basis_open_usd.
+      - name: unrealized_gain_pct
+        description: unrealized_gain_usd / cost_basis_open_usd; null for closed lots.
+      - name: proceeds_usd
+        description: Lifetime sale/liquidation proceeds allocated to the lot.
+      - name: realized_gain_usd
+        description: Lifetime FIFO realized gain on the lot's sold shares.
+      - name: dividend_income_usd
+        description: Lifetime dividends allocated to the lot.
+      - name: total_return_usd
+        description: >
+          market_value_usd + proceeds_usd + dividend_income_usd −
+          purchase_amount_usd: everything the lot produced, net of what it
+          cost.
+      - name: total_return_pct
+        description: total_return_usd / purchase_amount_usd.
+      - name: num_days_held
+        description: Days from acquisition to valued_as_of_date.
+      - name: annualized_return_pct
+        description: >
+          (1 + total_return_pct) ^ (365 / num_days_held) − 1. Null for lots
+          held under a year, where annualizing exaggerates.
+      - name: is_open
+        description: True while any shares of the lot are still held.
+      - name: is_synthetic
+        description: True when the opening buy is a synthetic gap-filling row.
+      - name: acquired_date
+        description: Purchase date.
+      - name: closed_date
+        description: Day the last share was disposed; null while open.
+      - name: valued_as_of_date
+        description: Date of the valuation (today for open lots, closed_date for closed ones).
+      - name: price_date
+        description: Trading day of close_price_usd; null on the cost-basis fallback.
+
+  - name: fct_investment_lot_daily_values
+    description: >
+      Daily valuation history at the lowest grain: one row per purchase
+      lot per calendar day it was held (acquisition through final
+      disposal, or today). Holding- and portfolio-level history aggregate
+      from here. Grain: lot_day_id (lot_id × date_day).
+    columns:
+      - name: lot_day_id
+        description: Primary key. Surrogate key (lot_id, date_day).
+        data_tests:
+          - unique
+          - not_null
+      - name: lot_id
+        description: FK to fct_investment_lots.
+      - name: ticker_symbol
+        description: Security held. FK to dim_securities.
+      - name: price_source
+        description: "'market_close' or 'cost_basis_no_market_data' (see fct_investment_lots)."
+      - name: quantity_open
+        description: Shares held at the end of the day.
+      - name: quantity_open_at_day_start
+        description: Shares held at the start of the day (0 on the acquisition day).
+      - name: disposed_quantity
+        description: Shares disposed that day.
+      - name: close_price_usd
+        description: Most recent close on or before the day (weekends carry Friday's close).
+      - name: market_value_usd
+        description: quantity_open × close_price_usd.
+      - name: purchase_amount_usd
+        description: >
+          Cash paid for the whole lot, repeated on every day of the lot.
+          Sum it across lots for a single date_day only (never across days).
+      - name: purchases_usd
+        description: Cash paid for the lot on its acquisition day; 0 otherwise.
+      - name: cost_basis_open_usd
+        description: Cost basis of the shares held at the end of the day.
+      - name: unrealized_gain_usd
+        description: market_value_usd − cost_basis_open_usd.
+      - name: proceeds_usd
+        description: Sale/liquidation proceeds received that day.
+      - name: cost_basis_relieved_usd
+        description: Cost basis of shares disposed that day.
+      - name: realized_gain_usd
+        description: Realized gain on shares disposed that day.
+      - name: dividend_income_usd
+        description: Dividends allocated to the lot that day (pro rata by start-of-day shares).
+      - name: cumulative_proceeds_usd
+        description: Proceeds since acquisition through the day.
+      - name: cumulative_realized_gain_usd
+        description: Realized gain since acquisition through the day.
+      - name: cumulative_dividend_income_usd
+        description: Dividends since acquisition through the day.
+      - name: total_return_usd
+        description: >
+          Lot's total return as of the day: market value + cumulative
+          proceeds + cumulative dividends − purchase amount.
+      - name: total_return_pct
+        description: total_return_usd / the lot's purchase amount.
+      - name: is_closed
+        description: True on and after the day the last share is disposed.
+      - name: acquired_date
+        description: Lot's purchase date, repeated on every day of the lot.
+      - name: date_day
+        description: Calendar day being valued.
+      - name: price_date
+        description: Trading day of close_price_usd; null on the cost-basis fallback.

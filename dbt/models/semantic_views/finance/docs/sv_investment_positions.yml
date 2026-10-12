@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: sv_investment_positions
+    description: >
+      Snowflake semantic view over fct_investment_lot_daily_values (one
+      row per purchase lot per day held), joined to dim_securities and
+      dim_dates. Two kinds of metric, labeled in each COMMENT:
+      POINT-IN-TIME (market value, shares, cost basis, unrealized gain,
+      total return to date), which need exactly one date_day (or
+      month-end days grouped by month); and FLOW (purchases, proceeds,
+      realized gains, dividends), which sum over any date range.

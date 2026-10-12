@@ -1,0 +1,272 @@
+version: 2
+
+models:
+  - name: int_investment_transactions_unioned
+    description: >
+      Every brokerage investment transaction in one normalized stream.
+      Rows dated before the Plaid cutover (dbt var
+      investment_plaid_cutover_date) come from the manual historical file,
+      which is the source of truth for that period; rows on or after it
+      come from Plaid. Both are mapped onto one category vocabulary and one
+      cash sign convention, and quantities are restated into today's share
+      basis using Yahoo's split history. Grain: investment_transaction_id.
+    columns:
+      - name: investment_transaction_id
+        description: >
+          Primary key. The historical file's txn_id (e.g. "T0001") or
+          Plaid's investment_transaction_id.
+        data_tests:
+          - unique
+          - not_null
+      - name: transaction_source
+        description: >
+          'manual_historical' (RAW.MANUAL.INVESTMENT_TRANSACTIONS_HISTORICAL)
+          or 'plaid' (RAW.PLAID.INVESTMENT_TRANSACTIONS).
+      - name: brokerage_name
+        description: >
+          Brokerage that recorded a historical row ("TD Ameritrade" or
+          "Charles Schwab"); null for Plaid rows.
+      - name: ticker_symbol
+        description: >
+          Security symbol. Null for cash activity (bank interest, Plaid's
+          CUR:USD cash security). FK to dim_securities.
+      - name: transaction_category
+        description: >
+          Normalized category: buy, sell, dividend, interest, fee,
+          stock_split, cost_basis_adjustment, liquidation, escrow_received,
+          cash_transfer, or other. Historical types map one-to-one (both
+          LIQUIDATION_SHARES and LIQUIDATION_CASH become liquidation).
+          Plaid maps type buy/sell/fee directly; subtypes containing
+          "dividend" or "capital gain" become dividend; "interest" becomes
+          interest; "stock split" becomes stock_split; deposits and
+          withdrawals of cash become cash_transfer; anything else is other.
+      - name: source_transaction_type
+        description: >
+          Original type from the source: the historical txn_type, or Plaid
+          "type/subtype".
+      - name: transaction_description
+        description: Brokerage or Plaid description of the transaction.
+      - name: quantity
+        description: >
+          Shares as recorded on the trade date (positive for buys,
+          negative for sells), before split adjustment.
+      - name: split_adjustment_factor
+        description: >
+          Product of every Yahoo-reported split ratio for the ticker dated
+          after the trade date (1 when none), rounded to 6 decimals.
+          Multiplying converts trade-date shares into today's share basis.
+      - name: split_adjusted_quantity
+        description: quantity × split_adjustment_factor.
+      - name: position_quantity_change
+        description: >
+          Split-adjusted shares this transaction adds to (+) or removes
+          from (−) the position. Non-zero only for buy, sell, and
+          liquidation. Split rows contribute 0 because the factor already
+          restates earlier quantities; escrow receipts contribute 0
+          because the escrow units carry no market value.
+      - name: price_usd
+        description: Per-share trade price as recorded (trade-date share basis).
+      - name: fees_usd
+        description: Fees charged on the transaction.
+      - name: cash_amount_usd
+        description: >
+          Cash impact on the account: positive = cash into the account
+          (sales, dividends, interest), negative = cash out (purchases).
+          Historical amounts are already in this convention; Plaid's
+          amount is sign-flipped.
+      - name: cost_basis_change_usd
+        description: >
+          Brokerage-reported change in cost basis. Historical rows carry it
+          as exported; Plaid buys use the purchase amount; null for Plaid
+          rows otherwise (sale basis is computed by FIFO matching).
+      - name: is_synthetic
+        description: >
+          True for historical rows added by hand to close gaps between
+          brokerage exports (see stg_manual__investment_transactions_historical.synthetic_note).
+      - name: trade_date
+        description: Date the transaction executed (Plaid transaction_date for Plaid rows).
+
+  - name: int_investment_lots
+    description: >
+      One row per purchase lot: every buy in int_investment_transactions_unioned,
+      with split-adjusted shares, the cash paid, and its brokerage cost
+      basis (including any brokerage basis restatements, spread pro rata by
+      shares across the ticker's lots held at the time). Also places each
+      lot on its ticker's cumulative purchase line in first-in-first-out
+      order, which drives FIFO sale matching. Grain: lot_id.
+    columns:
+      - name: lot_id
+        description: >
+          Primary key. The investment_transaction_id of the buy that opened
+          the lot.
+        data_tests:
+          - unique
+          - not_null
+      - name: ticker_symbol
+        description: Security bought. FK to dim_securities.
+      - name: transaction_source
+        description: Source of the buy ('manual_historical' or 'plaid').
+      - name: fifo_sequence_number
+        description: >
+          Order of the lot within its ticker, oldest first (ties broken by
+          lot_id). Sales consume lots in this order.
+      - name: lot_quantity
+        description: Shares bought, in today's share basis.
+      - name: fifo_quantity_start
+        description: >
+          Cumulative shares of the ticker bought before this lot. The lot
+          occupies (fifo_quantity_start, fifo_quantity_end] on the
+          ticker's purchase line.
+      - name: fifo_quantity_end
+        description: Cumulative shares of the ticker bought through this lot.
+      - name: purchase_amount_usd
+        description: Cash paid for the lot (positive), including fees.
+      - name: purchase_price_per_share_usd
+        description: purchase_amount_usd / lot_quantity, in today's share basis.
+      - name: initial_cost_basis_usd
+        description: >
+          Brokerage-reported cost basis at purchase (cost_basis_change_usd),
+          falling back to purchase_amount_usd when not reported.
+      - name: cost_basis_adjustment_usd
+        description: >
+          This lot's share of the ticker's brokerage basis restatements
+          (cost_basis_adjustment rows), allocated pro rata by lot_quantity
+          across lots acquired on or before each restatement. 0 when none.
+      - name: cost_basis_usd
+        description: initial_cost_basis_usd + cost_basis_adjustment_usd.
+      - name: cost_basis_per_share_usd
+        description: cost_basis_usd / lot_quantity.
+      - name: is_synthetic
+        description: True when the opening buy is a synthetic gap-filling row.
+      - name: acquired_date
+        description: Trade date of the opening buy.
+
+  - name: int_investment_lot_disposals_matched
+    description: >
+      FIFO matching of disposals to purchase lots. A disposal is all of a
+      ticker's sales and liquidations on one day (pairing a liquidation's
+      share removal with its cash payout). Each disposal occupies an
+      interval on the ticker's cumulative disposal line; wherever it
+      overlaps a lot's interval on the purchase line, those shares came
+      from that lot. Proceeds are split by matched shares over the
+      disposal; cost basis and purchase cash by matched shares over the
+      lot. Grain: one row per lot per disposal it contributed to.
+    columns:
+      - name: sk
+        description: Surrogate key (lot_id, disposal_id).
+        data_tests:
+          - unique
+          - not_null
+      - name: lot_id
+        description: Lot the shares came from. FK to int_investment_lots.
+      - name: disposal_id
+        description: Surrogate key (ticker_symbol, disposed_date) of the disposal.
+      - name: ticker_symbol
+        description: Security disposed.
+      - name: matched_quantity
+        description: Shares of this lot consumed by this disposal (today's share basis).
+      - name: proceeds_usd
+        description: Disposal's net cash proceeds × matched_quantity / disposal shares.
+      - name: cost_basis_relieved_usd
+        description: Lot's cost_basis_usd × matched_quantity / lot_quantity.
+      - name: purchase_amount_relieved_usd
+        description: Lot's purchase_amount_usd × matched_quantity / lot_quantity.
+      - name: realized_gain_usd
+        description: proceeds_usd − cost_basis_relieved_usd.
+      - name: acquired_date
+        description: Lot's acquisition date.
+      - name: disposed_date
+        description: Date of the disposal.
+
+  - name: int_investment_lots_fanned_out_to_day
+    description: >
+      Each purchase lot fanned out to one row per calendar day, from its
+      acquisition date through the day its last share is disposed (or
+      today if still open). Each day carries shares open, the most recent
+      close on or before that day (so weekends repeat Friday's close),
+      that day's disposals, dividends allocated to the lot, and running
+      totals since acquisition. The lowest-grain valuation history; the
+      lot, daily-value, and returns models all build on it. Materialized
+      as a table (an exception to the intermediate-view default) because
+      inlining this view chain made each downstream fact spend 50-80s in
+      Snowflake query compilation. Grain: lot_id × date_day.
+    columns:
+      - name: sk
+        description: Surrogate key (lot_id, date_day).
+        data_tests:
+          - unique
+          - not_null
+      - name: lot_id
+        description: FK to int_investment_lots.
+      - name: ticker_symbol
+        description: Security held.
+      - name: price_source
+        description: >
+          'market_close' when a Yahoo close on or before date_day exists;
+          'cost_basis_no_market_data' when it doesn't (BLCN, which Yahoo
+          dropped after its liquidation), in which case the lot is valued
+          at its cost basis per share.
+      - name: lot_quantity
+        description: Shares originally bought in the lot (today's share basis).
+      - name: quantity_open
+        description: Shares of the lot still held at the end of date_day.
+      - name: quantity_open_at_day_start
+        description: >
+          Shares held at the start of date_day: 0 on the acquisition day,
+          otherwise the prior day's quantity_open. Used to allocate
+          dividends paid on date_day.
+      - name: disposed_quantity
+        description: Shares of the lot disposed on date_day.
+      - name: close_price_usd
+        description: >
+          Most recent Yahoo close (split-adjusted) on or before date_day,
+          or the lot's cost basis per share when there is no market data.
+      - name: market_value_usd
+        description: quantity_open × close_price_usd.
+      - name: purchase_amount_usd
+        description: Cash paid for the whole lot (constant on every row).
+      - name: purchases_usd
+        description: purchase_amount_usd on the acquisition day, 0 otherwise.
+      - name: cost_basis_usd
+        description: Lot's full cost basis (constant on every row).
+      - name: cost_basis_open_usd
+        description: Cost basis of the shares still open (cost_basis_usd × quantity_open / lot_quantity).
+      - name: unrealized_gain_usd
+        description: market_value_usd − cost_basis_open_usd.
+      - name: proceeds_usd
+        description: Sale or liquidation proceeds allocated to this lot on date_day.
+      - name: cost_basis_relieved_usd
+        description: Cost basis of the shares disposed on date_day.
+      - name: realized_gain_usd
+        description: Realized gain from shares disposed on date_day.
+      - name: dividend_income_usd
+        description: >
+          This lot's share of the ticker's dividends paid on date_day:
+          dividend cash × quantity_open_at_day_start / the ticker's total
+          quantity_open_at_day_start that day. Pay-date holdings stand in
+          for ex-date holdings.
+      - name: cumulative_proceeds_usd
+        description: Running sum of proceeds_usd since acquisition.
+      - name: cumulative_realized_gain_usd
+        description: Running sum of realized_gain_usd since acquisition.
+      - name: cumulative_dividend_income_usd
+        description: Running sum of dividend_income_usd since acquisition.
+      - name: is_closed
+        description: True once every share of the lot has been disposed.
+      - name: acquired_date
+        description: Lot's acquisition date.
+      - name: closed_date
+        description: Day the lot's last share was disposed; null while open.
+      - name: price_date
+        description: >
+          Trading day of close_price_usd (the as-of match). Null on the
+          cost-basis fallback.
+      - name: date_day
+        description: Calendar day being valued.
+      - name: total_return_usd
+        description: >
+          Lot's total return to date: market_value_usd +
+          cumulative_proceeds_usd + cumulative_dividend_income_usd −
+          purchase_amount_usd.
+      - name: total_return_pct
+        description: total_return_usd / purchase_amount_usd.

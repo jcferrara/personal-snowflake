@@ -11,11 +11,10 @@ facts and dimensions only (never `stg_`/raw tables), `PRIMARY KEY` on every decl
 table, named `fact → dimension` relationships (no fact-to-fact joins), and `COMMENT` +
 `SYNONYMS` on everything.
 
-**No semantic views exist yet.** This repo currently has one mart (`dim_dates`) and no
-fact tables — build a `fct_*` mart first (see `dbt_mart_model`), then the first
-semantic view on top of it.
+**Domains with views:** `finance/` (investment lots and positions; see
+`finance/README.md`).
 
-## Structure (once views exist)
+## Structure
 
 - One subfolder per domain, matching the marts domains (`_core/`, `health/`,
   `finance/`, `meta/`).

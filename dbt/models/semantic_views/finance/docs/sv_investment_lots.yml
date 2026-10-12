@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: sv_investment_lots
+    description: >
+      Snowflake semantic view over fct_investment_lots (one row per
+      purchase lot), joined to dim_securities and to dim_dates on the
+      acquisition date. Current and lifetime per-lot results (market
+      value, cost basis, realized and unrealized gains, dividends, total
+      return) that roll up to any ticker, sector, category, purchase
+      year, or the whole portfolio. Includes fully sold lots; filter
+      is_open for current holdings. total_return_pct is money-weighted by
+      lot size; time-weighted returns live in
+      metrics_investment_returns_daily.
